@@ -34,6 +34,8 @@
 + `name`:     郵局的名稱
 + `zip_code`: 郵遞區號 
 + `time_stamp`: 取得資料的時間 (unix timestamp)
+>[!TIP]
+>查詢 place id網址: [Place ID](https://developers.google.com/maps/documentation/places/web-service/place-id?hl=zh-tw)
 
 
 裡面的郵局資料都能繼續增加，用以上格式填寫，`index`需照順序填寫
@@ -86,5 +88,16 @@ Start: 新竹武昌街郵局
 **********************************************/
 ```
 
-##### SAVE_MONEY
+### 內建巨集
+#### `API_KEY`
+每次發送請求都需要 API Key，因此**一定**要填，不然需要定義`SAVE_SAVE_MONEY`
+>[!TIP]
+>[申辦方法](https://ithelp.ithome.com.tw/articles/10283037)
+
+#### `SAVE_MONEY`
+因為 Google API 不是完全免費，1個月有200美金免費額度，但此project一次發送的請求不少，而且計費是以[element](https://developers.google.com/maps/documentation/distance-matrix/usage-and-billing?hl=zh-tw)計費，因此`SAVE_MONEY`會檢查現在距離上次得到資料的時間是否超過`REQ_DUR`，超過則發送請求，若無則使用 *post_office_with_info.json* 的資料
+#### `SAVE_SAVE_MONEY`
+>[!CAUTION]
+>一定要有 ***post_office_with_info.json*** 在資料夾中，不然就會出錯
+
 

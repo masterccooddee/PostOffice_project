@@ -20,16 +20,30 @@
 >需搭配 ***post_office.json*** 使用
 
 ### *post_office.json*
-    裡面有以下內容：
+裡面有以下內容：
+
 ```json
-    {
-        "index": 0,
-        "loc": "place_id:ChIJb2HleAc1aDQRNgCqh8u6PU4",
-        "name": "新竹武昌街郵局",
-        "zip_code": "300191"
-    }
-
+"post_office":[
+{
+    "index": 0,
+    "loc": "place_id:ChIJb2HleAc1aDQRNgCqh8u6PU4",
+    "name": "新竹武昌街郵局",
+    "zip_code": "300191"
+}
+],
+"time_stamp":1723097571
 ```
++ `index`:    代表郵局編號
++ `loc`:      郵局的 place id
++ `name`:     郵局的名稱
++ `zip_code`: 郵遞區號 
++ `time_stamp`: 取得資料的時間 (unix timestamp)
 
+
+裡面的郵局資料都能繼續增加，用以上格式填寫，**`index`**需照順序填寫
+>[!NOTE]
+>現有的資料中包含新竹市東區所有郵局
+>
+>參照：[新竹市當地支局](https://subservices.post.gov.tw/post/internet/Q_localpost/index.jsp?ID=12070201&search_area=%E6%96%B0%E7%AB%B9%E5%B8%82&desc=lp004_06.htm#list)
         
 

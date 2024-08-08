@@ -19,8 +19,17 @@
 >[!IMPORTANT]
 >需搭配 ***post_office.json*** 使用
 
-1. *post_office.json*
-    dsafasdf
-2. adsfdf
+### *post_office.json*
+    裡面有以下內容：
+```json
+    {
+        "index": 0,
+        "loc": "place_id:ChIJb2HleAc1aDQRNgCqh8u6PU4",
+        "name": "新竹武昌街郵局",
+        "zip_code": "300191"
+    }
+
+```
+
         
 

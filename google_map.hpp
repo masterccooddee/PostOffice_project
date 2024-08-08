@@ -229,9 +229,9 @@ void g_map::from_json() {
     fstream in;
     in.open("post_office_with_info.json", ios::in);
     if (!in.is_open()) {
-        cout << R"(Can't open "post_office_with_info.json")" << endl;
-        system("pause");
-        exit(EXIT_FAILURE);
+        cout << R"(Can't open "post_office_with_info.json", connect to Distance Matrix API")" << endl;
+        g_map_connect();
+        return;
     }
 
     json pf;

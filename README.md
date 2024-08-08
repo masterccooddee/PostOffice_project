@@ -95,7 +95,7 @@ Start: 新竹武昌街郵局
 >[申辦方法](https://ithelp.ithome.com.tw/articles/10283037)
 
 #### `SAVE_MONEY`
-因為 Google API 不是完全免費，1個月有200美金免費額度，但此project一次發送的請求不少，而且計費是以[element](https://developers.google.com/maps/documentation/distance-matrix/usage-and-billing?hl=zh-tw)計費，因此`SAVE_MONEY`會檢查現在距離上次得到資料的時間是否超過`REQ_DUR`，超過則發送請求，若無則使用 *post_office_with_info.json* 的資料
+因為 Google API 不是完全免費，1個月有**200美金**免費額度，但此project一次發送的請求不少，而且計費是以[element](https://developers.google.com/maps/documentation/distance-matrix/usage-and-billing?hl=zh-tw)計費，因此`SAVE_MONEY`會檢查現在距離上次得到資料的時間是否超過`REQ_DUR`，超過則發送請求，若無則使用 *post_office_with_info.json* 的資料
 #### `SAVE_SAVE_MONEY`
 >[!CAUTION]
 >一定要有 ***post_office_with_info.json*** 在資料夾中，不然就會出錯

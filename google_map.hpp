@@ -1,6 +1,6 @@
 
 /***********************************************************************************************\
- * Files needed:                                                                               * 
+ * Files needed:                                                                               *
  * httplib.h => https://github.com/yhirose/cpp-httplib                                         *
  * json.hpp  => https://github.com/nlohmann/json/blob/develop/single_include/nlohmann/json.hpp *
  * libcrypto-3-x64.dll                                                                         *
@@ -54,7 +54,7 @@ wstring_convert<codecvt_utf8<wchar_t>> utf8;
 class g_map {
 
 public:
-    
+
     g_map();
 
     //存放郵局資訊
@@ -66,7 +66,7 @@ public:
     //時間格式化 Ex. 2024/08/08 13:00:00
     string rec_time_f;
 
-    
+
 private:
 
     //連接google map api
@@ -84,7 +84,7 @@ private:
 };
 
 g_map::g_map() {
-    
+
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
@@ -127,7 +127,7 @@ g_map::g_map() {
 
 void g_map::g_map_connect() {
 
-        
+
     cout << "Connecting to Distance Matrix API..." << endl;
     httplib::Client cli("https://maps.googleapis.com");
     httplib::Params params;
@@ -172,13 +172,14 @@ void g_map::g_map_connect() {
             std::cout << "HTTP error: " << httplib::to_string(err) << std::endl;
             exit(EXIT_FAILURE);
         }
-        
-        if (js["status"] == "REQUEST_DENIED") {
-            cerr << "Something went wrong, check your API" << endl;
+
+        //Error handle
+        if (js["status"] != "OK") {
+            cerr << "Something went wrong, Error message: " << js["status"] << endl;
             error = true;
             break;
         }
-            
+
 
         int index = 0;
         for (int j = 0; j < js["rows"][0]["elements"].size(); j++) {
@@ -207,7 +208,7 @@ void g_map::g_map_connect() {
 
     if (error == true)
         exit(EXIT_FAILURE);
-    
+
 }
 
 void g_map::to_json(json js, fstream& out) {
@@ -239,17 +240,17 @@ void g_map::from_json() {
 
     post_office* lpf = new post_office();
     for (int i = 0; i < pf["post_office"].size(); i++) {
-        
+
         lpf->num = pf["post_office"][i]["index"];
         lpf->loc = pf["post_office"][i]["loc"];
         lpf->name = pf["post_office"][i]["name"];
         lpf->zip_code = pf["post_office"][i]["zip_code"];
 
-        
+
         unordered_map<string, dis_dur> dd;
         pf["post_office"][i]["info"].get_to(dd);
-        lpf->info=dd;
-        
+        lpf->info = dd;
+
         pfs.insert(make_pair(i, *lpf));
         lpf->info.clear();
     }
@@ -261,7 +262,7 @@ void g_map::from_json() {
 ostream& operator<<(ostream& os, const g_map& gm) {
 
     cout << utf8.to_bytes(L"資料取得時間: ") << gm.rec_time_f << endl;
-      
+
     for (auto x : gm.pfs) {
         cout << "Start: " << x.second.name << endl;
         for (auto w : x.second.info)

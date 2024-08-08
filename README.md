@@ -45,7 +45,7 @@
 >參見：[新竹市當地支局](https://subservices.post.gov.tw/post/internet/Q_localpost/index.jsp?ID=12070201&search_area=%E6%96%B0%E7%AB%B9%E5%B8%82&desc=lp004_06.htm#list)
 
 ### *post_office_with_info.json*
-比 *post_office.json* 多了 info 資訊，巨集[`SAVE_MONEY`](#save_money)與[`SAVE_SAVE_MONEY`](#SAVE_SAVE_MONEY)會用到
+比 *post_office.json* 多了 info 資訊，巨集[`SAVE_MONEY`](#save_money)與[`SAVE_SAVE_MONEY`](#save_save_money)會用到
 
 ### *google_map.hpp*
 >[!IMPORTANT]
@@ -96,8 +96,16 @@ Start: 新竹武昌街郵局
 
 #### `SAVE_MONEY`
 因為 Google API 不是完全免費，1個月有**200美金**免費額度，但此project一次發送的請求不少，而且計費是以[element](https://developers.google.com/maps/documentation/distance-matrix/usage-and-billing?hl=zh-tw)計費，因此`SAVE_MONEY`會檢查現在距離上次得到資料的時間是否超過`REQ_DUR`，超過則發送請求，若無則使用 *post_office_with_info.json* 的資料
+
 #### `SAVE_SAVE_MONEY`
 >[!CAUTION]
->一定要有 ***post_office_with_info.json*** 在資料夾中，不然就會出錯
+>一定要有 ***post_office_with_info.json*** 在資料夾中，不然就會強制連線
+
+如果完全不想連接 Google API，那使用`SAVE_SAVE_MONEY`就只會使用現有資料( *post_office_with_info.json* )
+
+#### `REQ_DUR`
+判斷是否要連線取得資料的時間
+
+
 
 

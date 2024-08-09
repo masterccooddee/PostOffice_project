@@ -109,6 +109,6 @@ Start: 新竹武昌街郵局
 ## 模擬退火演算法 (SA)
 介紹影片
 [![模擬退火演算法](https://img.youtube.com/vi/P4p-YgidpZ4/maxresdefault.jpg)](https://www.youtube.com/watch?v=P4p-YgidpZ4)
-
+<iframe width="560" height="315" src="https://www.youtube.com/watch?v=P4p-YgidpZ4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 

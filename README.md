@@ -104,8 +104,11 @@ Start: 新竹武昌街郵局
 如果完全不想連接 Google API，那使用`SAVE_SAVE_MONEY`就只會使用現有資料( *post_office_with_info.json* )
 
 #### `REQ_DUR`
-判斷是否要連線取得資料的時間
+判斷是否要重新連線取得資料的時間長度
 
+## 模擬退火演算法 (SA)
+介紹影片
+[![模擬退火演算法](https://img.youtube.com/vi/P4p-YgidpZ4/maxresdefault.jpg)](https://www.youtube.com/watch?v=P4p-YgidpZ4)
 
 
 

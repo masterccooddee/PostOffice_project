@@ -24,7 +24,7 @@
 
 
 
-#define API_KEY "YOUR_API_KEY"
+#define API_KEY "AIzaSyDskLMtW6BvOlmjOBCScOs5rGknYbK3LcU"
 #define REQ_DUR 1800 //unit: ¬í
 
 #if (defined SAVE_SAVE_MONEY && defined SAVE_MONEY)

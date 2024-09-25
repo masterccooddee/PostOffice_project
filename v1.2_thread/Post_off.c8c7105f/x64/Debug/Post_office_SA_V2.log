@@ -1,9 +1,0 @@
-﻿  Post_office_SA_V2.cpp
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(45,15): warning C4244: '正在初始化': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(208,24): warning C4244: '引數': 將 'double' 轉換為 'size_t'，由於類型不同，可能導致資料遺失
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(349,47): warning C4267: '引數': 將 'size_t' 轉換為 '_Ty'，資料可能遺失
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(349,47): warning C4267:         with
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(349,47): warning C4267:         [
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(349,47): warning C4267:             _Ty=int
-D:\project\Post_office_SA_V2\Post_office_SA_V2.cpp(349,47): warning C4267:         ]
-  Post_office_SA_V2.vcxproj -> D:\project\Post_office_SA_V2\x64\Debug\Post_office_SA_V2.exe

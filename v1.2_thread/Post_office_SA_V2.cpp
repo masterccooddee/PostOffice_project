@@ -13,15 +13,8 @@
 
 #include <mutex>
 
-std::mutex mtx;
+mutex mtx;
 int counter = 0;
-
-void increment_counter() {
-  for (int i = 0; i < 1000; ++i) {
-    std::lock_guard<std::mutex> lock(mtx);
-    ++counter;
-  }
-}
 
 #define T0 1e6        //初始溫度
 #define iter 250      //迭代次數
@@ -34,6 +27,7 @@ vector<unordered_map<int, post_office>> pfs_v;
 unordered_map<int, post_office> pfs;
 vector<int> pf_vec; //郵局順序
 vector<int> now_vec;
+vector 
 vector<int> shortest_vec; //郵局最短順序
 uniform_real_distribution <double> nd(0.0, 1.0); //隨機數變為均勻分佈(0~1)
 
@@ -51,6 +45,7 @@ random_device rd;
 int seed1 = rd();
 int seed2 = rd();
 array<mt19937, 2> gens = { mt19937(seed1), mt19937(seed2) };
+mutex now_vec_mtx;
 
 string color(int c)
 {
@@ -111,21 +106,21 @@ void show_time(time_t t) {
 void SA_test(mt19937 gen, uniform_int_distribution<> id)
 {
 
-  std::uniform_int_distribution<> dis(1, 100);
+  //uniform_int_distribution<> dis(1, 100);
 
-  for (int i = 0; i < 100; ++i) {
-    int random_number = dis(gen);
+  //for (int i = 0; i < 100; ++i) {
+  //  int random_number = dis(gen);
 
-    // 保護共享數據的訪問
-    {
-      std::lock_guard<std::mutex> lock(mtx);
-      shared_counter += random_number;
-      std::cout << "Thread " << id << " added " << random_number << " to shared_counter. New value: " << shared_counter << std::endl;
-    }
+  //  // 保護共享數據的訪問
+  //  {
+  //    lock_guard<mutex> lock(mtx);
+  //    shared_counter += random_number;
+  //    cout << "Thread " << id << " added " << random_number << " to shared_counter. New value: " << shared_counter << std::endl;
+  //  }
 
-    // 模擬一些工作
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  //  // 模擬一些工作
+  //  this_thread::sleep_for(chrono::milliseconds(10));
+  //}
   double y = 0;
   double t0 = T0;
 
@@ -177,11 +172,12 @@ void SA_test(mt19937 gen, uniform_int_distribution<> id)
 
     // 接受結果
     if (y > x) {
+      lock_guard<mutex> lock(now_vec_mtx); // 保護 now_vec 的訪問
       shortest_vec = now_vec;
       s_time_cs = l_time_cs;
 
 
-      /*cout << "\r\033[38;2;235;118;65m" << utf8.to_bytes(L"迭代次數: ") << i << " Temp: ";
+      cout << "\r\033[38;2;235;118;65m" << utf8.to_bytes(L"迭代次數: ") << i << " Temp: ";
       printf("%.3f                                                                       \033[0m\n", t0);
       cout << "Now: ";
       for (auto x : now_vec)
@@ -190,7 +186,7 @@ void SA_test(mt19937 gen, uniform_int_distribution<> id)
       for (auto w : shortest_vec)
         cout << w << " ";
       cout << " Time cost: " << s_time_cs << endl;
-      cout << "==============================================================================================================" << endl;*/
+      cout << "==============================================================================================================" << endl;
 
 
       //降溫
@@ -204,6 +200,7 @@ void SA_test(mt19937 gen, uniform_int_distribution<> id)
     // 不接受結果
     else {
       i--;
+      lock_guard<mutex> lock(now_vec_mtx); // 保護 now_vec 的訪問
       now_vec = shortest_vec;
       loading(try_cnt, TRY_MAX, "Trying, please wait...");
       try_cnt++;
@@ -217,7 +214,136 @@ void SA_test(mt19937 gen, uniform_int_distribution<> id)
       second = id(gen);
     }
     swap(now_vec[first], now_vec[second]);
+    lock_guard<mutex> lock(now_vec_mtx); // 保護 now_vec 的訪問
+  }
 
+  cout << endl;
+  cout << "Shortest Distance: " << s_time_cs << endl;
+  cout << "Path:" << endl;
+  for (auto it = shortest_vec.begin(); it != shortest_vec.end(); it++) {
+
+    if (it == shortest_vec.begin())
+      cout << pfs[*it].name;
+    else
+      cout << " -> " << pfs[*it].name;
+  }
+  cout << endl << endl;
+
+
+}
+
+void SA_test1(mt19937 gen, uniform_int_distribution<> id)
+{
+
+  //uniform_int_distribution<> dis(1, 100);
+
+  //for (int i = 0; i < 100; ++i) {
+  //  int random_number = dis(gen);
+
+  //  // 保護共享數據的訪問
+  //  {
+  //    lock_guard<mutex> lock(mtx);
+  //    shared_counter += random_number;
+  //    cout << "Thread " << id << " added " << random_number << " to shared_counter. New value: " << shared_counter << std::endl;
+  //  }
+
+  //  // 模擬一些工作
+  //  this_thread::sleep_for(chrono::milliseconds(10));
+  //}
+  double y = 0;
+  double t0 = T0;
+
+  //嘗試次數
+  int try_cnt = 1;
+
+  for (int i = 0; i < iter; i++) {
+
+    if (try_cnt > TRY_MAX) {
+      cout << endl << "Have tried " << TRY_MAX << " times!!!!" << endl;
+      break;
+    }
+
+    if (t0 < 1e-2) {
+      cout << "Temperature is under 1e-8!!!" << endl;
+      break;
+    }
+
+    int l_time_cs = 0;
+
+    //計算這個組合距離總長
+    for (int j = 0; j < now_vec.size() - 1; j++) {
+
+      //先找對應node，再找對下一個node的距離 info.first->distance info.second->duration time
+      l_time_cs = l_time_cs + pfs[now_vec[j]].info[to_string(now_vec[j + 1])].second;
+      //停留時間(秒)
+      stay_time = 0;
+      //現在時間
+      now_t = now_t + pfs[now_vec[j]].info[to_string(now_vec[j + 1])].second + stay_time;
+      //show_time(now_t);
+
+      localtime_s(&ttime, &now_t);
+      if (ttime.tm_hour > now_hour && ttime.tm_hour <= 16) {
+
+        pfs = pfs_v[ttime.tm_hour - start_hour];
+        now_hour = ttime.tm_hour;
+      }
+    }
+    now_t = now;
+
+    //y是由結果產生的0~1的值， 之後要擲骰子確定是否要留下結果
+    if (l_time_cs < s_time_cs)
+      y = 1;
+    else
+      y = 1 / exp((l_time_cs - s_time_cs) / t0);
+
+    //x是0~1隨機數，若y > x則採用組合，反之則否
+    double x = nd(gen);
+
+    // 接受結果
+    if (y > x) {
+      lock_guard<mutex> lock(now_vec_mtx); // 保護 now_vec 的訪問
+      shortest_vec = now_vec;
+      s_time_cs = l_time_cs;
+
+
+      cout << "\r\033[38;2;235;118;65m" << utf8.to_bytes(L"迭代次數: ") << i << " Temp: ";
+      printf("%.3f                                                                       \033[0m\n", t0);
+      cout << "Now: ";
+      for (auto x : now_vec)
+        cout << x << " ";
+      cout << "  " << "Shortest: ";
+      for (auto w : shortest_vec)
+        cout << w << " ";
+      cout << " Time cost: " << s_time_cs << endl;
+      cout << "==============================================================================================================" << endl;
+
+
+      //降溫
+      t0 = t0 * 0.9;
+
+      //嘗試次數變回0
+      try_cnt = 0;
+
+    }
+
+    // 不接受結果
+    else {
+      i--;
+      lock_guard<mutex> lock(now_vec_mtx); // 保護 now_vec 的訪問
+      now_vec = shortest_vec;
+      loading(try_cnt, TRY_MAX, "Trying, please wait...");
+      try_cnt++;
+
+    }
+    //遊歷路徑重新組合
+    //shuffle(now_vec.begin() + 1, now_vec.end() - 1, gen);
+    int first = id(gen);
+    int second = id(gen);
+    while (first == second) {
+      second = id(gen);
+    }
+    swap(now_vec[first], now_vec[second]);
+    lock_guard<mutex> lock(now_vec_mtx); // 保護 now_vec 的訪問
   }
 
   cout << endl;
@@ -241,8 +367,8 @@ int main()
   //time_t now;
   //int stay_time = 0;
   cout << utf8.to_bytes(L"歡迎使用郵局最短路徑計算程式") << endl << utf8.to_bytes(L"輸入起始時間 (ex. 12:03:04 或 -1 即現在時間 ps.資料由 AM 9:00 to PM 5:00): ");
-  string s;
-  cin >> s;
+  string s = "10:00:00";
+  //cin >> s;
   //tm ttime;
 
   if (s == "-1") {
@@ -347,12 +473,14 @@ int main()
   now_vec = pf_vec;
 
   uniform_int_distribution<> id(1, pfs.size() - 1);
+  uniform_int_distribution<> it(1, pfs.size() - 1);
 
   vector<thread> threads;
 
-  for (int i = 0; i < 2; ++i) {
-    threads.emplace_back(SA_test, gens[i], id);
-  }
+  //for (int i = 0; i < 1; ++i) {
+    threads.emplace_back(SA_test, gens[0], id);
+    threads.emplace_back(SA_test1, gens[1], it);
+  //}
 
   for (auto& t : threads) {
     t.join();

@@ -23,12 +23,11 @@ int counter = 0;
 
 using namespace std;
 
-vector<unordered_map<int, post_office>> pfs_v;
-unordered_map<int, post_office> pfs;
-vector<int> pf_vec; //郵局順序
-vector<int> now_vec;
-vector 
-vector<int> shortest_vec; //郵局最短順序
+//vector<unordered_map<int, post_office>> pfs_v;
+//unordered_map<int, post_office> pfs;
+//vector<int> pf_vec; //郵局順序
+//vector<int> now_vec;
+//vector<int> shortest_vec; //郵局最短順序
 uniform_real_distribution <double> nd(0.0, 1.0); //隨機數變為均勻分佈(0~1)
 
 tm ttime;
@@ -45,65 +44,74 @@ random_device rd;
 int seed1 = rd();
 int seed2 = rd();
 array<mt19937, 2> gens = { mt19937(seed1), mt19937(seed2) };
-mutex now_vec_mtx;
+
+struct data
+{
+  vector<unordered_map<int, post_office>> pfs_v;
+  unordered_map<int, post_office> pfs;
+  vector<int> pf_vec; //郵局順序
+  vector<int> now_vec;
+  //vector<int> shortest_vec; //郵局最短順序
+  uniform_int_distribution<> id;
+};
 
 string color(int c)
 {
-    int r = c >> 16;
-    int g = (c & 0xFF00) >> 8;
-    int b = c & 0xFF;
-    string s = "\033[38;2;" + to_string(r) + ";" + to_string(g) + ";" + to_string(b) + "m";
-    return s;
+  int r = c >> 16;
+  int g = (c & 0xFF00) >> 8;
+  int b = c & 0xFF;
+  string s = "\033[38;2;" + to_string(r) + ";" + to_string(g) + ";" + to_string(b) + "m";
+  return s;
 }
 
 void loading(size_t process, size_t total, string s = "") {
 
-    int count = 0;
-    int color_p[20] = { 0xFCE3D0, 0xFCDDC6, 0xFBD8BD, 0xFBD2B3, 0xFACCAA,
-                        0xFAC7A0, 0xF9C197, 0xF8BB8E, 0xF8B684, 0xF7B07B,
-                        0xF7AA71, 0xF6A568, 0xF69F5E, 0xF59A55, 0xF5944B,
-                        0xF48E42, 0xF38939, 0xF3832F, 0xF27D26, 0xF2781C };
-    cout << "\r" << "\033[?25l";
+  int count = 0;
+  int color_p[20] = { 0xFCE3D0, 0xFCDDC6, 0xFBD8BD, 0xFBD2B3, 0xFACCAA,
+                      0xFAC7A0, 0xF9C197, 0xF8BB8E, 0xF8B684, 0xF7B07B,
+                      0xF7AA71, 0xF6A568, 0xF69F5E, 0xF59A55, 0xF5944B,
+                      0xF48E42, 0xF38939, 0xF3832F, 0xF27D26, 0xF2781C };
+  cout << "\r" << "\033[?25l";
 
-    printf("%s %llu / %llu => %llu%% [", s.c_str(), process, total, size_t(process * 100.0 / total));
-    for (int j = 5; j <= int(process * 100.0 / total); j += 5)
-    {
-        cout << "\033[0m" << color(color_p[count]) << "##" << "\033[0m";
-        count++;
-    }
-    for (int i = count; i <= 19; i++)
-    {
-        cout << "..";
-    }
-    count = 0;
-    cout << "]";
+  printf("%s %llu / %llu => %llu%% [", s.c_str(), process, total, size_t(process * 100.0 / total));
+  for (int j = 5; j <= int(process * 100.0 / total); j += 5)
+  {
+    cout << "\033[0m" << color(color_p[count]) << "##" << "\033[0m";
+    count++;
+  }
+  for (int i = count; i <= 19; i++)
+  {
+    cout << "..";
+  }
+  count = 0;
+  cout << "]";
 }
 
 time_t get_time(string s) {
 
-	struct tm t = { 0 };
-	int hour, min, sec;
-	sscanf_s(s.c_str(), "%d:%d:%d", &hour, &min, &sec);
-	t.tm_year = 2024 - 1900;
-	t.tm_mon = 9 - 1;
-	t.tm_mday = 11;
-	t.tm_hour = hour;
-	t.tm_min = min;
-	t.tm_sec = sec;
-	return mktime(&t);
+  struct tm t = { 0 };
+  int hour, min, sec;
+  sscanf_s(s.c_str(), "%d:%d:%d", &hour, &min, &sec);
+  t.tm_year = 2024 - 1900;
+  t.tm_mon = 9 - 1;
+  t.tm_mday = 11;
+  t.tm_hour = hour;
+  t.tm_min = min;
+  t.tm_sec = sec;
+  return mktime(&t);
 }
 
 void show_time(time_t t) {
 
-    struct tm ttime;
-	localtime_s(&ttime, &t);
-	char t_out[80] = { 0 };
-	strftime(t_out, sizeof(t_out), "%Y/%m/%d %A %H:%M:%S\n", &ttime);
-	cout << t_out;
-    
+  struct tm ttime;
+  localtime_s(&ttime, &t);
+  char t_out[80] = { 0 };
+  strftime(t_out, sizeof(t_out), "%Y/%m/%d %A %H:%M:%S\n", &ttime);
+  cout << t_out;
+
 }
 
-void SA_test(mt19937 gen, uniform_int_distribution<> id)
+void SA_test(data one)
 {
 
   //uniform_int_distribution<> dis(1, 100);
@@ -142,10 +150,10 @@ void SA_test(mt19937 gen, uniform_int_distribution<> id)
     int l_time_cs = 0;
 
     //計算這個組合距離總長
-    for (int j = 0; j < now_vec.size() - 1; j++) {
+    for (int j = 0; j < one.now_vec().size() - 1; j++) {
 
       //先找對應node，再找對下一個node的距離 info.first->distance info.second->duration time
-      l_time_cs = l_time_cs + pfs[now_vec[j]].info[to_string(now_vec[j + 1])].second;
+      l_time_cs = l_time_cs + one.pfs[now_vec[j]].info[to_string(now_vec[j + 1])].second;
       //停留時間(秒)
       stay_time = 0;
       //現在時間
@@ -473,13 +481,29 @@ int main()
   now_vec = pf_vec;
 
   uniform_int_distribution<> id(1, pfs.size() - 1);
-  uniform_int_distribution<> it(1, pfs.size() - 1);
+  //uniform_int_distribution<> it(1, pfs.size() - 1);
+
+  data *one = new data();
+  data* two = new data();
+
+
+  one->pfs_v = pfs_v;
+  one->pfs = pf;
+  one->pf_vec = pf_vec;
+  one->now_vec = now_vec;
+  one->id = id;
+
+  two->pfs_v = pfs_v;
+  two->pfs = pf;
+  two->pf_vec = pf_vec;
+  two->now_vec = now_vec;
+  two->id = id;
 
   vector<thread> threads;
 
-  //for (int i = 0; i < 1; ++i) {
-    threads.emplace_back(SA_test, gens[0], id);
-    threads.emplace_back(SA_test1, gens[1], it);
+  //for (int i = 0; i < 2; ++i) {
+  threads.emplace_back(SA_test, one);
+  threads.emplace_back(SA_test, two);
   //}
 
   for (auto& t : threads) {

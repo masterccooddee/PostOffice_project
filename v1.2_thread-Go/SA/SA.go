@@ -14,17 +14,29 @@ import (
 )
 
 type Out_msg struct {
-	Message1 string
-	Message2 string
-	count    int
+	Message1    string
+	Message2    string
+	S_r         []int
+	Arrive_time string
+	Ttime       int
+}
+
+type MMSg []Out_msg
+
+func (m MMSg) Len() int {
+	return len(m)
+}
+func (m MMSg) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+func (m MMSg) Less(i, j int) bool {
+	return m[i].Ttime < m[j].Ttime
 }
 
 func Open_file(f string) (*simplejson.Json, error) {
 	file, err := os.Open(f)
 	if err != nil {
 		return nil, err
-	} else {
-		//fmt.Println("File opened successfully")
 	}
 
 	defer file.Close()
@@ -46,12 +58,12 @@ func time_cost(route []int, j []*simplejson.Json, n_t time.Time) (int, time.Time
 	var dur int
 	var index int
 
-	now_time := n_t
+	now_time_l := n_t
 	for i := 0; i < len(route)-1; i++ {
 
 		if n_t.Hour() <= 16 {
 
-			index = n_t.Hour() - now_time.Hour()
+			index = n_t.Hour() - now_time_l.Hour()
 
 		} else {
 			index = len(j) - 1
@@ -59,7 +71,7 @@ func time_cost(route []int, j []*simplejson.Json, n_t time.Time) (int, time.Time
 		dur = j[index].Get("post_office").GetIndex(route[i]).Get("info").Get(strconv.Itoa(route[i+1])).GetIndex(1).MustInt()
 		time_cost += dur
 		n_t = n_t.Add(time.Duration(dur) * time.Second)
-		//fmt.Println(dur, n_t)
+
 	}
 
 	return time_cost, n_t
@@ -73,7 +85,7 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 	const iter int = 250       //iteration times
 	const alpha float64 = 0.9  //cooling rate
 	const T_end float64 = 1e-1 //end temperature
-	const TRY_MAX int = 0.9e8  //max try times
+	const TRY_MAX int = 2e7    //max try times
 
 	//enter time
 	var hour, min, second int
@@ -131,23 +143,26 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 	var try_count int
 
 	var timestamp_s time.Time
+	var now time.Time
+	var time_c int
+
 	//SA
 	for i := 0; i < iter; i++ {
 
 		if try_count >= TRY_MAX {
 			(*output_s)[id].Message1 = fmt.Sprintf("\rTry over %d times", TRY_MAX)
-			(*output_s)[id].count += 1
+
 			break
 		}
 		if temperature <= T_end {
 			(*output_s)[id].Message1 = fmt.Sprintf("\rTemperature is lower than %.3f", T_end)
-			(*output_s)[id].count += 1
+
 			break
 		}
 
-		now := now_time
+		now = now_time
+		time_c, now = time_cost(now_route, j_s, now)
 
-		time_c, now := time_cost(now_route, j_s, now)
 		l_time_cost = time_c
 		if l_time_cost < s_time_cost {
 			y = 1
@@ -160,11 +175,10 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 		if y > x {
 			shortest_route = now_route
 			s_time_cost = l_time_cost
-			//arrival_time := now.Format("PM 03:04:05")
+			arrival_time := now.Format("PM 03:04:05")
+			(*output_s)[id].Arrive_time = arrival_time
 
-			(*output_s)[id].Message1 = fmt.Sprintf("\r第%d次迭代 Temp: %.3f 最短路徑: %v Time: %d 秒", i+1, temperature, shortest_route, s_time_cost)
-			(*output_s)[id].count += 1
-			//fmt.Println("----------------------------------------------------------------------")
+			(*output_s)[id].Message1 = fmt.Sprintf("\r第%d次迭代 Temp: %.3f 最短路徑: %v Time: %d 秒 🚛 %s", i+1, temperature, shortest_route, s_time_cost, (*output_s)[id].Arrive_time)
 
 			//cool down
 			temperature *= alpha
@@ -184,7 +198,7 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 			minutes := totalSeconds / 60
 			seconds := totalSeconds % 60
 
-			(*output_s)[id].Message2 = fmt.Sprintf("\rTrying please wait... %d/%d  %d%% [%02d : %02d]", try_count, TRY_MAX, (try_count*100)/TRY_MAX, minutes, seconds)
+			(*output_s)[id].Message2 = fmt.Sprintf("\rTrying please wait... %d/%d  \033[32m%d%%\033[0m [%02d : %02d]", try_count, TRY_MAX, (try_count*100)/TRY_MAX, minutes, seconds)
 			//fmt.Println(now_route)
 		}
 
@@ -200,16 +214,8 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 		rand.Shuffle(len(now_route)-2, func(i, j int) { now_route[i+1], now_route[j+1] = now_route[j+1], now_route[i+1] })
 	}
 
-	(*output_s)[id].Message1 = fmt.Sprintf("\rFinish Shortest Route: %v Time: %d", shortest_route, s_time_cost)
-	// fmt.Print("最短路徑: ")
-	// for index, pf := range shortest_route {
-	// 	if index != len(shortest_route)-1 {
-	// 		fmt.Printf("%s ⇨ ", j_s[0].Get("post_office").GetIndex(shortest_route[pf]).Get("name").MustString())
-	// 	} else {
-	// 		fmt.Printf("%s\n", j_s[0].Get("post_office").GetIndex(shortest_route[pf]).Get("name").MustString())
-	// 	}
+	(*output_s)[id].Message1 = fmt.Sprintf("\033[38;2;22;246;230m\rヾ(⌐■_■)ノ♪\033[0m Finish Shortest Route: %v Time: \033[38;2;230;193;38m%d\033[0m 秒  🚛 %s", shortest_route, s_time_cost, (*output_s)[id].Arrive_time)
+	(*output_s)[id].S_r = shortest_route
+	(*output_s)[id].Ttime = s_time_cost
 
-	// }
-
-	//time.Sleep(5 * time.Minute)
 }

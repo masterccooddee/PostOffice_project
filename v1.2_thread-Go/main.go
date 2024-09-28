@@ -15,7 +15,7 @@ var done chan bool
 var wg sync.WaitGroup
 var mg []sa.Out_msg
 
-const Threads = 16
+const Threads = 8
 
 func print(mg *[]sa.Out_msg) {
 	lineCounter := 0

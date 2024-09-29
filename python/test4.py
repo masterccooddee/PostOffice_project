@@ -158,7 +158,7 @@ def main():
     for i in range(4):
         if now.hour + i > 16:
             break
-        filename = f"python/post_office_with_info_{now.hour + i}.json"
+        filename = f"post_office_with_info_{now.hour + i}.json"
         gm.from_json(filename)
         pfs_v.append(copy.deepcopy(gm.pfs))  # Use deepcopy to avoid reference issues
 

@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"os"
 	sa "pft/SA"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bitly/go-simplejson"
 )
 
 var done chan bool
 var wg sync.WaitGroup
 var mg []sa.Out_msg
+var system = runtime.GOOS
 
-const Threads = 8
+const Threads = 16
 
 func print(mg *[]sa.Out_msg) {
 	lineCounter := 0
@@ -59,9 +63,16 @@ func main() {
 	fmt.Print("輸入時間(12:00:00  -1為現在時間): ")
 	input_time, _ := reader.ReadString('\n')
 	input_time = strings.TrimSpace(input_time)
+	var err error
+	var jj *simplejson.Json
 
 	fmt.Println()
-	jj, err := sa.Open_file("data\\post_office_with_info_9.json")
+	if system == "linux" {
+		jj, err = sa.Open_file("data/post_office_with_info_9.json")
+	} else {
+		jj, err = sa.Open_file("data\\post_office_with_info_9.json")
+	}
+
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -126,6 +137,7 @@ func main() {
 
 	}
 
+	fmt.Print("\033[?25h")
 	time.Sleep(5 * time.Minute)
 
 }

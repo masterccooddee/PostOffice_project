@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -111,7 +112,14 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 			break
 		}
 
-		file_name := "data\\post_office_with_info_" + strconv.Itoa(n_h) + ".json"
+		system := runtime.GOOS
+		var file_name string
+
+		if system == "linux" {
+			file_name = "data/post_office_with_info_" + strconv.Itoa(n_h) + ".json"
+		} else {
+			file_name = "data\\post_office_with_info_" + strconv.Itoa(n_h) + ".json"
+		}
 		j, err := Open_file(file_name)
 		if err != nil {
 			fmt.Println(err)

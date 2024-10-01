@@ -8,10 +8,10 @@ import math
 import copy  # Added for deep copying pfs
 
 T0 = 1e6  # Initial temperature
-iter_count = 2500000000  
+iter_count = 2500000000 
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
-cooling_rate = 0.98
+cooling_rate = 0.9
 
 class PostOffice:
     def __init__(self, num, name, info):

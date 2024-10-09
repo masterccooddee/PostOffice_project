@@ -1,4 +1,4 @@
-#應該是可以的
+#one thread printing process
 
 import json
 import random

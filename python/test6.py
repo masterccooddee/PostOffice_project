@@ -1,4 +1,4 @@
-#應該是可以的
+#multi process
 
 import json
 import random
@@ -12,19 +12,7 @@ iter_count = 2500000000
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 cooling_rate = 0.9
-
-###測試用
-def loading(process, total, s=""):
-    count = 0
-    percent = int(process * 100.0 / total)
-    print(f"\r{s} {process} / {total} => {percent}% [", end='')
-
-    for j in range(5, percent + 1, 5):
-        print("##", end='')  # Show progress bar
-        count += 1
-
-    print(".. " * (20 - count), end='')
-    print("]", end='\r')
+thread_num = 6
 
 class PostOffice:
     def __init__(self, num, name, info):
@@ -115,16 +103,12 @@ def simulated_annealing(gm, start, now, pfs_v):
             shortest_vec = now_vec.copy()
             s_time_cs = l_time_cs
             successful_iterations += 1  # Increment successful iteration counter
-            print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')  # Show successful iterations
-            print("Now:", now_vec, "Shortest:", shortest_vec, "Time cost:", s_time_cs)
-            print("=" * 100)
 
             t0 *= cooling_rate  # Cooling schedule
             try_cnt = 0
         else:
             i -= 1
             now_vec = shortest_vec.copy()
-            loading(try_cnt, TRY_MAX, "Trying, please wait...")
             try_cnt += 1
 
         # Randomly rearrange the path
@@ -143,7 +127,7 @@ def parallel_simulation(gm, seed, pfs_v, start, now):
     result = simulated_annealing(gm, start, now, pfs_v)
     return result
 
-"""
+
 def main():
     gm = GMap()
     now = None
@@ -167,14 +151,14 @@ def main():
 
     # Load post office data
     pfs_v = []
-    for i in range(4):
+    for i in range(thread_num):
         if now.hour + i > 16:
             break
         filename = f"python/post_office_with_info_{now.hour + i}.json"
         gm.from_json(filename)
         pfs_v.append(copy.deepcopy(gm.pfs))  # Use deepcopy to avoid reference issues
 
-    seeds = [random.randint(0, int(1e6)) for _ in range(4)]
+    seeds = [random.randint(0, int(1e6)) for _ in range(thread_num)]
     
     start = int(input("Enter starting post office code: "))
     while not (0 <= start < len(gm.pfs)):
@@ -182,7 +166,7 @@ def main():
         start = int(input())
 
     # Call the parallel simulation function with gm as an argument
-    with multiprocessing.Pool(processes=4) as pool:
+    with multiprocessing.Pool(processes=thread_num) as pool:
         results = pool.starmap(parallel_simulation, [(gm, seed, pfs_v, start, now) for seed in seeds])
     
     # Process results (this part is unchanged)
@@ -200,64 +184,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-"""
-def main():
-    gm = GMap()
-    now = None
-
-    print("Welcome to the Postal Route Optimization Program")
-    s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
-
-    # Time validation
-    while True:
-        if s == "-1":
-            now = datetime.now()
-        else:
-            now = get_time(s)
-
-        if 9 <= now.hour <= 16:
-            break
-        print("Invalid time range. Please re-enter: ")
-        s = input()
-
-    print("Start time: ", now.strftime("%H:%M:%S"))
-
-    # Load post office data
-    pfs_v = []
-    for i in range(4):
-        if now.hour + i > 16:
-            break
-        filename = f"python/post_office_with_info_{now.hour + i}.json"
-        gm.from_json(filename)
-        pfs_v.append(copy.deepcopy(gm.pfs))  # Use deepcopy to avoid reference issues
-
-    seeds = [random.randint(0, int(1e6)) for _ in range(4)]
-    
-    start = int(input("Enter starting post office code: "))
-    while not (0 <= start < len(gm.pfs)):
-        print("Input out of range, please re-enter: ")
-        start = int(input())
-
-    # Only run the simulation for the first seed
-    seed = seeds[0]  # Select only the first seed
-    result = parallel_simulation(gm, seed, pfs_v, start, now)  # Run the simulation for that seed
-
-    # Process results
-    shortest_time, shortest_path = result
-    print("\nShortest Time:", shortest_time)
-    print("Path:")
-    for i, it in enumerate(shortest_path):
-        if i == 0:
-            print(gm.pfs[it].name, end="")  # No arrow before the first element (starting point)
-        else:
-            print(" ->", gm.pfs[it].name, end="")  # Add arrow before subsequent elements
-
-    print()  # Print newline after the path
-
-if __name__ == "__main__":
-    main()
-
 

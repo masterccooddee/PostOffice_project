@@ -12,6 +12,7 @@ iter_count = 2500000000
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 cooling_rate = 0.9
+thread_num = 1
 
 ###測試用
 def loading(process, total, s=""):
@@ -167,14 +168,14 @@ def main():
 
     # Load post office data
     pfs_v = []
-    for i in range(4):
+    for i in range(thread_num):
         if now.hour + i > 16:
             break
         filename = f"python/post_office_with_info_{now.hour + i}.json"
         gm.from_json(filename)
         pfs_v.append(copy.deepcopy(gm.pfs))  # Use deepcopy to avoid reference issues
 
-    seeds = [random.randint(0, int(1e6)) for _ in range(4)]
+    seeds = [random.randint(0, int(1e6)) for _ in range(thread_num)]
     
     start = int(input("Enter starting post office code: "))
     while not (0 <= start < len(gm.pfs)):
@@ -182,7 +183,7 @@ def main():
         start = int(input())
 
     # Call the parallel simulation function with gm as an argument
-    with multiprocessing.Pool(processes=1) as pool:
+    with multiprocessing.Pool(processes=thread_num) as pool:
         results = pool.starmap(parallel_simulation, [(gm, seed, pfs_v, start, now) for seed in seeds])
     
     # Process results (this part is unchanged)

@@ -1,4 +1,4 @@
-#應該是可以的
+#multi process
 
 import json
 import random
@@ -8,10 +8,11 @@ import math
 import copy  # Added for deep copying pfs
 
 T0 = 1e6  # Initial temperature
-iter_count = 2500000000  
+iter_count = 2500000000 
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
-cooling_rate = 0.98
+cooling_rate = 0.9
+thread_num = 6
 
 class PostOffice:
     def __init__(self, num, name, info):
@@ -87,19 +88,14 @@ def simulated_annealing(gm, start, now, pfs_v):
                 print("Temperature is too low, adjusting to minimum value.")
                 t0 = 1e-10
 
-            # Instead of calculating y directly, use logarithms to avoid overflow
-            try:
-                exponent = time_diff / t0
-                # Limit the exponent to a safe range
-                if exponent > 700:
-                    exponent = 700
-                elif exponent < -700:
-                    exponent = -700
-                
-                y = math.exp(-exponent)  # Calculate y using exponentiation
-            except OverflowError:
-                print("Overflow error in calculating y, adjusting value.")
-                y = 0  # You can set y to a safe value to continue
+            # Ensure time_diff / t0 does not exceed a threshold
+            exp_argument = time_diff / t0
+            if exp_argument > 709:  # Limiting to avoid overflow
+                y = 0
+            elif exp_argument < -709:
+                y = 1
+            else:
+                y = 1 / (2.71828 ** exp_argument)
 
         x = random.uniform(0.0, 1.0)
 
@@ -125,12 +121,12 @@ def simulated_annealing(gm, start, now, pfs_v):
     print(f"Successful iterations: {successful_iterations}")
     return s_time_cs, shortest_vec
 
-
 def parallel_simulation(gm, seed, pfs_v, start, now):
     print(f"Running simulation for seed {seed}...")
     random.seed(seed)  # Use seed for random number generation
     result = simulated_annealing(gm, start, now, pfs_v)
     return result
+
 
 def main():
     gm = GMap()
@@ -155,14 +151,14 @@ def main():
 
     # Load post office data
     pfs_v = []
-    for i in range(4):
+    for i in range(thread_num):
         if now.hour + i > 16:
             break
         filename = f"python/post_office_with_info_{now.hour + i}.json"
         gm.from_json(filename)
         pfs_v.append(copy.deepcopy(gm.pfs))  # Use deepcopy to avoid reference issues
 
-    seeds = [random.randint(0, int(1e6)) for _ in range(4)]
+    seeds = [random.randint(0, int(1e6)) for _ in range(thread_num)]
     
     start = int(input("Enter starting post office code: "))
     while not (0 <= start < len(gm.pfs)):
@@ -170,7 +166,7 @@ def main():
         start = int(input())
 
     # Call the parallel simulation function with gm as an argument
-    with multiprocessing.Pool(processes=4) as pool:
+    with multiprocessing.Pool(processes=thread_num) as pool:
         results = pool.starmap(parallel_simulation, [(gm, seed, pfs_v, start, now) for seed in seeds])
     
     # Process results (this part is unchanged)
@@ -188,3 +184,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

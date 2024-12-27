@@ -5,15 +5,21 @@ import threading
 import time
 
 T0 = 1e6  # Initial temperature
-iter_count = 2500  # Iteration count
+iter_count = 25000000  # Iteration count
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
+
+# 全域變數：記錄所有執行緒的進度
+progress = {}
+progress_lock = threading.Lock()
+
 
 class PostOffice:
     def __init__(self, num, name, info):
         self.num = num
         self.name = name
         self.info = info
+
 
 class GMap:
     def __init__(self):
@@ -26,21 +32,11 @@ class GMap:
                 post_office = PostOffice(item['index'], item['name'], item['info'])
                 self.pfs[post_office.num] = post_office
 
-def loading(process, total, s=""):
-    count = 0
-    percent = int(process * 100.0 / total)
-    print(f"\r{s} {process} / {total} => {percent}% [", end='')
-
-    for j in range(5, percent + 1, 5):
-        print("##", end='')  # Show progress bar
-        count += 1
-
-    print(".. " * (20 - count), end='')
-    print("]", end='\r')
 
 def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
+
 
 class OutMsg:
     def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None):
@@ -50,7 +46,10 @@ class OutMsg:
         self.ttime = ttime
         self.arrive_time = arrive_time
 
+
 def sa(input_time, start, output_list, thread_id):
+    global progress
+
     gm = GMap()
     now = get_time(input_time)
 
@@ -142,7 +141,8 @@ def sa(input_time, start, output_list, thread_id):
         else:
             i -= 1
             now_vec = shortest_vec.copy()
-            loading(try_cnt, TRY_MAX, "Trying, please wait...")
+            with progress_lock:
+                progress[thread_id] = f"Trying, please wait... {try_cnt}/{TRY_MAX}"
             try_cnt += 1
 
         # Randomly rearrange the path
@@ -157,6 +157,21 @@ def sa(input_time, start, output_list, thread_id):
         s_r=shortest_vec,
         ttime=s_time_cs
     )
+    with progress_lock:
+        progress[thread_id] = "Completed"
+
+
+def display_progress(num_threads):
+    global progress
+    while True:
+        with progress_lock:
+            for thread_id in range(num_threads):
+                status = progress.get(thread_id, "Not started")
+                print(f"{thread_id}: {status}", end=' | ')
+            print("\r", end="")
+        time.sleep(0.5)
+        if all(progress.get(thread_id) == "Completed" for thread_id in range(num_threads)):
+            break
 
 
 if __name__ == "__main__":
@@ -187,22 +202,34 @@ if __name__ == "__main__":
 
     time.sleep(0.5)
 
-
     num_threads = 4
     threads = []
     outputs = [OutMsg() for _ in range(num_threads)]
 
+    # 初始化進度字典
+    for thread_id in range(num_threads):
+        progress[thread_id] = "Initializing"
+
+    # 啟動模擬退火的執行緒
     for thread_id in range(num_threads):
         thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id))
         threads.append(thread)
         thread.start()
 
+    # 啟動顯示進度的執行緒
+    display_thread = threading.Thread(target=display_progress, args=(num_threads,))
+    display_thread.start()
+
+    # 等待所有模擬退火執行緒完成
     for thread in threads:
         thread.join()
 
-    print("\n")
+    # 等待顯示進度的執行緒完成
+    display_thread.join()
+
+    print("\nAll threads completed!")
     for output in outputs:
         if output.message1:
             print(output.message1)
         else:
-            print(f"Thread {thread_id} failed to complete.")
+            print(f"Thread failed to complete.")

@@ -1,9 +1,11 @@
 import json
 import random
 from datetime import datetime, timedelta
+import threading
+import time
 
 T0 = 1e6  # Initial temperature
-iter_count = 2500000000000  # Iteration count
+iter_count = 2500  # Iteration count
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 
@@ -40,28 +42,18 @@ def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
-def main():
+class OutMsg:
+    def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None):
+        self.message1 = message1
+        self.message2 = message2
+        self.s_r = s_r
+        self.ttime = ttime
+        self.arrive_time = arrive_time
+
+def sa(input_time, start, output_list, thread_id):
     gm = GMap()
-    now = None
+    now = get_time(input_time)
 
-    print("Welcome to the Postal Route Optimization Program")
-    s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
-
-    # Time validation
-    while True:
-        if s == "-1":
-            now = datetime.now()
-        else:
-            now = get_time(s)
-
-        if 9 <= now.hour <= 16:
-            break
-        print("Invalid time range. Please re-enter: ")
-        s = input()
-
-    print("Start time: ", now.strftime("%H:%M:%S"))
-
-    # Load post office data
     pfs_v = []
     for i in range(4):
         if now.hour + i > 16:
@@ -74,21 +66,16 @@ def main():
 
     # Generate random seed
     seed = random.randint(0, 1000000)
-    print("Seed:", seed)
     random.seed(seed)
 
     pf_vec = list(range(len(pfs)))  # Postal office order
     shortest_vec = []  # Shortest postal office order
     s_time_cs = float('inf')  # Shortest travel time
-    start = int(input("Enter starting post office code: "))
 
-    while not (0 <= start < len(pfs)):
-        print("Input out of range, please re-enter: ")
-        start = int(input())
-
-    pf_vec.remove(start)
-    pf_vec = [start] + pf_vec + [start]  # Establish postal office order
+    # Establish postal office order
     now_vec = pf_vec.copy()
+    now_vec.remove(start)
+    now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
 
     # Simulated annealing algorithm
     t0 = T0
@@ -97,11 +84,11 @@ def main():
 
     for i in range(iter_count):
         if try_cnt > TRY_MAX:
-            print(f"\nTried {TRY_MAX} times!!!!")
+            output_list[thread_id].message1 = f"\nTried {TRY_MAX} times!!!!"
             break
 
         if t0 < 1e-2:
-            print("Temperature is too low!")
+            output_list[thread_id].message1 = "Temperature is too low!"
             break
 
         l_time_cs = 0
@@ -128,7 +115,6 @@ def main():
                 time_diff = -700
 
             if t0 <= 1e-10:
-                print("Temperature is too low, adjusting to minimum value.")
                 t0 = 1e-10
 
             # Ensure time_diff / t0 does not exceed a threshold
@@ -147,9 +133,9 @@ def main():
             s_time_cs = l_time_cs
             successful_iterations += 1  # Increment successful iteration counter
 
-            print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')  # Show successful iterations
-            print("Now:", now_vec, "Shortest:", shortest_vec, "Time cost:", s_time_cs)
-            print("=" * 100)
+            output_list[thread_id].message1 = f"Iteration: {successful_iterations} Temp: {t0:.3f}"
+            output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec} Time cost: {s_time_cs}s"
+            output_list[thread_id].arrive_time = now.strftime("%I:%M:%S %p")
 
             t0 *= 0.9  # Cooling schedule
             try_cnt = 0
@@ -166,16 +152,57 @@ def main():
             second = random.randint(1, len(now_vec) - 2)
         now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
 
-    print("\nShortest Time:", s_time_cs)
-    print("Path:")
+    output_list[thread_id] = OutMsg(
+        message1=f"Finish Shortest Route: {shortest_vec}, Time: {s_time_cs}s",
+        s_r=shortest_vec,
+        ttime=s_time_cs
+    )
 
-    for i, it in enumerate(shortest_vec):
-        if i == 0:
-            print(pfs[it].name, end="")  # No arrow before the first element (starting point)
-        else:
-            print(" ->", pfs[it].name, end="")  # Add arrow before subsequent elements
-
-    print()  # Print newline after the path
 
 if __name__ == "__main__":
-    main()
+    now = None
+
+    print("Welcome to the Postal Route Optimization Program")
+    s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
+
+    while True:
+        if s == "-1":
+            now = datetime.now()
+        else:
+            now = get_time(s)
+
+        if 9 <= now.hour <= 16:
+            break
+        print("Invalid time range. Please re-enter: ")
+        s = input()
+
+    print("Start time: ", now.strftime("%H:%M:%S"))
+
+    start = int(input("Enter starting post office code: "))
+
+    while not (0 <= start < 16):
+        print("Input out of range, please re-enter: ")
+        start = int(input())
+        print("Start at: ", start)
+
+    time.sleep(0.5)
+
+
+    num_threads = 4
+    threads = []
+    outputs = [OutMsg() for _ in range(num_threads)]
+
+    for thread_id in range(num_threads):
+        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    print("\n")
+    for output in outputs:
+        if output.message1:
+            print(output.message1)
+        else:
+            print(f"Thread {thread_id} failed to complete.")

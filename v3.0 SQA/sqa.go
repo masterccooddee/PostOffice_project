@@ -6,15 +6,16 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/bitly/go-simplejson"
 )
 
 var (
-	iter_time               = 1000
-	temp            float64 = 1e3
-	transverseField float64 = 1e4
+	iter_time int = 5e7
+	epson         = 1e-3
 )
 
 func Open_file(f string) (*simplejson.Json, error) {
@@ -37,18 +38,11 @@ func Open_file(f string) (*simplejson.Json, error) {
 
 }
 
-func show_matrix(matrix [][]int) {
-	for i := 0; i < len(matrix); i++ {
-		fmt.Println(matrix[i])
-	}
-}
-
-func main() {
-
-	jj, err := Open_file("data\\post_office_with_info_10.json")
+func make_matrix(s string) [][]int {
+	jj, err := Open_file(s)
 	if err != nil {
 		fmt.Println(err)
-		return
+		os.Exit(1)
 	}
 	array, _ := jj.Get("post_office").Array()
 	N := len(array)
@@ -65,78 +59,152 @@ func main() {
 				continue
 			}
 			time_matrix[i][j] = jj.Get("post_office").GetIndex(i).Get("info").Get(strconv.Itoa(j)).GetIndex(1).MustInt()
-			//time_matrix[i][j] = 10000
+
 		}
 
 	}
-	fmt.Println("time_matrix")
-	show_matrix(time_matrix)
+	return time_matrix
+}
 
-	// make spin matrix
-	spin_matrix := make([][]int, N)
-	for i := 0; i < N; i++ {
-		spin_matrix[i] = make([]int, N)
-	}
+func find_max(matrix [][][]int) int {
+	var time []int
 
-	for i := 0; i < N; i++ {
-		for j := 0; j < N; j++ {
-			spin_matrix[i][j] = rand.Intn(2)*2 - 1
+	for _, m := range matrix {
+		for i := 0; i < len(m); i++ {
+			time = append(time, m[i]...)
 		}
 	}
-	fmt.Println("spin_matrix")
-	show_matrix(spin_matrix)
+	return slices.Max(time)
+}
 
-	// make local field matrix
-	localField_matrix := make([][]int, N)
-	for i := 0; i < N; i++ {
-		localField_matrix[i] = make([]int, N)
+func show_matrix(matrix [][]int) {
+	for i := 0; i < len(matrix); i++ {
+		fmt.Println(matrix[i])
 	}
+}
 
-	for m := 0; m < N; m++ {
-		for i := 0; i < N; i++ {
-			for j := 0; j < N; j++ {
-				localField_matrix[i][m] += time_matrix[i][j] * spin_matrix[j][m]
-			}
-		}
-	}
-	fmt.Println("localField_matrix")
-	show_matrix(localField_matrix)
-	var deltaH float64
-	var transverseField2 float64
-	jdagger := temp / 2 * math.Log(math.Cosh(float64(transverseField)/(float64(N)*temp))/math.Sinh(float64(transverseField)/(float64(N)*temp)))
+// time_cost (Energry)
+func time_cost(route [][]int, dis_matrix [][][]int, n_t time.Time, alpha float32) (float32, time.Time) {
+	var time_cost int
+	var index int
+	var h1 int
+	var h2 int
 
-	for t := 0; t < iter_time; t++ {
-		for i := 0; i < N; i++ {
-			for m := 0; m < N; m++ {
-				if m == 0 {
-					deltaH = float64(spin_matrix[i][m]) * (float64(localField_matrix[i][m]) - jdagger*float64((spin_matrix[i][m+1])))
-				} else if m == N-1 {
-					deltaH = float64(spin_matrix[i][m]) * (float64(localField_matrix[i][m]) - jdagger*float64((spin_matrix[i][m-1])))
+	now_time_l := n_t
+	index = n_t.Hour() - now_time_l.Hour()
+	//time
+	for i := 0; i < len(route); i++ {
+		// first city
+		for j := 0; j < len(route); j++ {
+			// second city
+			for k := 0; k < len(route); k++ {
+				if i != len(route)-1 {
+					time_cost += dis_matrix[index][j][k] * route[i][j] * route[i+1][k]
+					n_t = n_t.Add(time.Duration(dis_matrix[index][j][k]*route[i][j]*route[i+1][k]) * time.Second)
 				} else {
-					deltaH = float64(spin_matrix[i][m]) * (float64(localField_matrix[i][m]) - jdagger*float64((spin_matrix[i][m+1]+spin_matrix[i][m-1])))
-				}
-				fmt.Println("deltaH", deltaH)
-
-				if math.Exp(-deltaH/temp) > rand.Float64() {
-					spin_matrix[i][m] = -spin_matrix[i][m]
-
-					for j := 0; j < N; j++ {
-						localField_matrix[j][m] += 2 * time_matrix[i][j] * spin_matrix[i][m]
-					}
-
-					fmt.Println("temp", temp)
+					time_cost += dis_matrix[index][j][k] * route[i][j] * route[0][k]
+					n_t = n_t.Add(time.Duration(dis_matrix[index][j][k]*route[i][j]*route[0][k]) * time.Second)
 				}
 
+				//處理跨越時間
+				if n_t.Hour() <= 16 {
+
+					index = n_t.Hour() - now_time_l.Hour()
+
+				} else {
+					index = len(dis_matrix) - 1
+				}
 			}
 		}
-		temp *= 0.9
-		transverseField2 = transverseField * (1 - float64(t+1)/float64(iter_time))
-		jdagger = temp / 2 * math.Log(math.Cosh(float64(transverseField2)/(float64(N)*temp))/math.Sinh(float64(transverseField2)/(float64(N)*temp)))
-		fmt.Println(t)
-		fmt.Println("transverseField", transverseField2)
-		fmt.Println("temp", temp)
-		fmt.Println("jdagger", jdagger)
-		show_matrix(spin_matrix)
+
+	}
+
+	tmp := 0
+	//計算penalty
+	for t := 0; t < len(route); t++ {
+		for i := 0; i < len(route); i++ {
+			tmp += route[t][i]
+		}
+		h1 += (tmp - 1) * (tmp - 1)
+		tmp = 0
+	}
+	tmp = 0
+	for i := 0; i < len(route); i++ {
+		for t := 0; t < len(route); t++ {
+			tmp += route[t][i]
+		}
+		h2 += (tmp - 1) * (tmp - 1)
+		tmp = 0
+	}
+
+	total_cost := float32(time_cost) + float32(h1)*alpha + float32(h2)*alpha
+	// fmt.Print("\r")
+	// fmt.Print("h1:", h1, "h2:", h2, "alpha:", alpha, "time cost:", time_cost)
+	fmt.Printf("\rtime cost: %5d, alpha: %2f, h1: %d, h2: %d", time_cost, alpha, h1, h2)
+	return total_cost, n_t
+}
+
+func SQA(input_time string, start int) {
+
+	//enter time
+	var hour, min, second int
+	var now_time time.Time
+	var t_matrix_slice [][][]int
+
+	if input_time == "-1" {
+		now_time = time.Now()
+		hour = now_time.Hour()
+		min = now_time.Minute()
+		second = now_time.Second()
+	} else {
+		fmt.Sscanf(input_time, "%d:%d:%d", &hour, &min, &second)
+		now_time = time.Date(2024, time.December, 25, hour, min, second, 0, time.Local)
+	}
+
+	for i := 0; i < 4; i++ {
+
+		n_h := hour + i
+		if n_h > 16 {
+			break
+		}
+		file_name := "data\\post_office_with_info_" + strconv.Itoa(n_h) + ".json"
+		t_matrix_slice = append(t_matrix_slice, make_matrix(file_name))
+	}
+
+	t_max := find_max(t_matrix_slice)
+
+	// city_time_matrix
+	var ct_matrix = make([][]int, len(t_matrix_slice[0]))
+	for i := 0; i < len(t_matrix_slice[0]); i++ {
+		ct_matrix[i] = make([]int, len(t_matrix_slice[0]))
+		if i == 0 {
+			continue
+		}
+		random_walk := rand.Intn(len(t_matrix_slice[0]))
+		ct_matrix[i][random_walk] = 1
+	}
+	ct_matrix[0][start] = 1
+
+	best_time := float32(math.MaxFloat32)
+
+	for i := 0; i < iter_time; i++ {
+		alpha := (float32(i)/float32(5))*float32(t_max) + float32(epson)
+		t_c, depart := time_cost(ct_matrix, t_matrix_slice, now_time, alpha)
+		if t_c < best_time {
+			best_time = t_c
+			fmt.Print("\n")
+			show_matrix(ct_matrix)
+			fmt.Println("\rbest time: ", best_time, "alpha: ", alpha, "iter: ", i, "depart time: ", depart)
+
+		}
+		// flip bit
+		for j := 1; j < len(ct_matrix); j++ {
+
+			random_walk := rand.Intn(len(t_matrix_slice[0]))
+			ct_matrix[j] = make([]int, len(t_matrix_slice[0]))
+			ct_matrix[j][random_walk] = 1
+
+		}
 	}
 
 }

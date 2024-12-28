@@ -8,15 +8,35 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bitly/go-simplejson"
 )
 
 var (
-	iter_time int = 5e7
-	epson         = 1e-3
+	epson float32 = 1e-3
 )
+
+type Out_msg struct {
+	Message1    string
+	Message2    string
+	S_r         []int
+	Arrive_time string
+	Ttime       int
+}
+
+type MMSg []Out_msg
+
+func (m MMSg) Len() int {
+	return len(m)
+}
+func (m MMSg) Swap(i, j int) {
+	m[i], m[j] = m[j], m[i]
+}
+func (m MMSg) Less(i, j int) bool {
+	return m[i].Ttime < m[j].Ttime
+}
 
 func Open_file(f string) (*simplejson.Json, error) {
 	file, err := os.Open(f)
@@ -66,15 +86,20 @@ func make_matrix(s string) [][]int {
 	return time_matrix
 }
 
-func find_max(matrix [][][]int) int {
+func find_max_min(matrix [][][]int) (int, int) {
 	var time []int
 
 	for _, m := range matrix {
 		for i := 0; i < len(m); i++ {
-			time = append(time, m[i]...)
+			for j := 0; j < len(m); j++ {
+				if i == j {
+					continue
+				}
+				time = append(time, m[i][j])
+			}
 		}
 	}
-	return slices.Max(time)
+	return slices.Max(time), slices.Min(time)
 }
 
 func show_matrix(matrix [][]int) {
@@ -84,7 +109,7 @@ func show_matrix(matrix [][]int) {
 }
 
 // time_cost (Energry)
-func time_cost(route [][]int, dis_matrix [][][]int, n_t time.Time, alpha float32) (float32, time.Time) {
+func time_cost(route [][]int, dis_matrix [][][]int, n_t time.Time, alpha float32) (float32, time.Time, int, int) {
 	var time_cost int
 	var index int
 	var h1 int
@@ -138,18 +163,18 @@ func time_cost(route [][]int, dis_matrix [][][]int, n_t time.Time, alpha float32
 	}
 
 	total_cost := float32(time_cost) + float32(h1)*alpha + float32(h2)*alpha
-	// fmt.Print("\r")
-	// fmt.Print("h1:", h1, "h2:", h2, "alpha:", alpha, "time cost:", time_cost)
-	fmt.Printf("\rtime cost: %5d, alpha: %2f, h1: %d, h2: %d", time_cost, alpha, h1, h2)
-	return total_cost, n_t
+
+	//fmt.Printf("\rtime cost: %5d, alpha: %2f, h1: %d, h2: %d", time_cost, alpha, h1, h2)
+	return total_cost, n_t, h1, h2
 }
 
-func SQA(input_time string, start int) {
+func SQA(input_time string, start int, iter_time int, wg *sync.WaitGroup, msg *MMSg, id int, alpha_coff float32) {
 
 	//enter time
 	var hour, min, second int
 	var now_time time.Time
 	var t_matrix_slice [][][]int
+	defer wg.Done()
 
 	if input_time == "-1" {
 		now_time = time.Now()
@@ -171,7 +196,8 @@ func SQA(input_time string, start int) {
 		t_matrix_slice = append(t_matrix_slice, make_matrix(file_name))
 	}
 
-	t_max := find_max(t_matrix_slice)
+	t_max, t_min := find_max_min(t_matrix_slice)
+	epson = float32(t_min)
 
 	// city_time_matrix
 	var ct_matrix = make([][]int, len(t_matrix_slice[0]))
@@ -180,21 +206,45 @@ func SQA(input_time string, start int) {
 		if i == 0 {
 			continue
 		}
-		random_walk := rand.Intn(len(t_matrix_slice[0]))
-		ct_matrix[i][random_walk] = 1
+		//random_walk := rand.Intn(len(t_matrix_slice[0]))
+		ct_matrix[i][i] = 1
 	}
 	ct_matrix[0][start] = 1
 
 	best_time := float32(math.MaxFloat32)
-
+	timestamp_s := time.Now()
+	var alpha float32 = alpha_coff*float32(t_max) + float32(epson)
 	for i := 0; i < iter_time; i++ {
-		alpha := (float32(i)/float32(5))*float32(t_max) + float32(epson)
-		t_c, depart := time_cost(ct_matrix, t_matrix_slice, now_time, alpha)
+
+		// 計算經過的時間
+		elapsed := time.Since(timestamp_s)
+		totalSeconds := int(elapsed.Seconds())
+		minutes := totalSeconds / 60
+		seconds := totalSeconds % 60
+		(*msg)[id].Message2 = fmt.Sprintf("\rTrying please wait... %d/%d  \033[32m%d%%\033[0m [%02d : %02d]", i+1, iter_time, ((i+1)*100)/iter_time, minutes, seconds)
+
+		t_c, depart, h1, h2 := time_cost(ct_matrix, t_matrix_slice, now_time, alpha)
 		if t_c < best_time {
 			best_time = t_c
-			fmt.Print("\n")
-			show_matrix(ct_matrix)
-			fmt.Println("\rbest time: ", best_time, "alpha: ", alpha, "iter: ", i, "depart time: ", depart)
+			(*msg)[id].Arrive_time = depart.Format("PM 03:04:05")
+			(*msg)[id].Ttime = int(t_c)
+
+			if h1 == 0 && h2 == 0 {
+				var route []int
+				for j := 0; j < len(ct_matrix); j++ {
+					for k := 0; k < len(ct_matrix); k++ {
+						if ct_matrix[j][k] == 1 {
+							route = append(route, k)
+							break
+						}
+					}
+				}
+				route = append(route, start)
+				(*msg)[id].S_r = route
+			} else {
+				(*msg)[id].S_r = nil
+			}
+			(*msg)[id].Message1 = fmt.Sprintf("\r第%d次迭代 Alpha: %.3f Epson: %.3f 最短路徑: %v Time: %d 秒 🚛 %s", i+1, alpha, epson, (*msg)[id].S_r, int(t_c), (*msg)[id].Arrive_time)
 
 		}
 		// flip bit

@@ -4,8 +4,53 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 )
+
+var (
+	total_iter int = 5e7
+	wg         sync.WaitGroup
+	msg        MMSg
+	Threads    int = 20
+	done           = make(chan struct{})
+)
+
+func print(mg *MMSg) {
+	lineCounter := 0
+	p_time := 0
+	for {
+		select {
+		case <-done:
+			return
+		default:
+
+			for i := 0; i < Threads; i++ {
+
+				if lineCounter >= 5 && p_time == 0 {
+					fmt.Printf("\033[s\033[%dB\033[u", 20)
+					lineCounter = 0
+					p_time++
+				}
+
+				fmt.Printf("ID: %d\n", i)
+				fmt.Printf("%s                                   \n", (*mg)[i].Message1)
+				fmt.Printf("%s                                    \n", (*mg)[i].Message2)
+				if i != Threads-1 {
+					fmt.Print("\033[38;2;235;118;65m+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-\033[0m\n")
+
+				}
+				lineCounter += 4
+
+			}
+			up := Threads*3 + Threads - 1
+			fmt.Printf("\033[%dA", up)
+
+		}
+	}
+}
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
@@ -42,5 +87,46 @@ func main() {
 	fmt.Print("輸入起始郵局: ")
 	fmt.Scanf("%d\n", &start)
 	fmt.Println()
-	SQA(input_time, start)
+
+	iter_per_thread := total_iter / Threads
+	msg = make(MMSg, Threads)
+
+	fmt.Print("\033[?25l")
+	wg.Add(Threads)
+
+	go print(&msg)
+
+	for i := 0; i < Threads; i++ {
+		alpha_coff := float32(i) / float32(Threads-1)
+		go SQA(input_time, start, iter_per_thread, &wg, &msg, i, alpha_coff)
+	}
+
+	wg.Wait()
+	time.Sleep(1 * time.Millisecond)
+	done <- struct{}{}
+	fmt.Printf("\033[%dB\033[0m", Threads*3+Threads)
+	fmt.Println()
+
+	for i := range msg {
+		if msg[i].S_r == nil {
+			msg[i].Ttime = 1e9
+		}
+	}
+
+	sort.Sort(msg)
+
+	shortest_route := msg[0].S_r
+	fmt.Printf("最短路徑: %v Time: \033[38;2;230;193;38m%d\033[0m 秒 🚛抵達時間： %s\n", msg[0].S_r, msg[0].Ttime, msg[0].Arrive_time)
+
+	for index, pf := range shortest_route {
+		if index != len(shortest_route)-1 {
+			fmt.Printf("%s ⇨ ", jj.Get("post_office").GetIndex(pf).Get("name").MustString())
+		} else {
+			fmt.Printf("%s\n", jj.Get("post_office").GetIndex(pf).Get("name").MustString())
+		}
+
+	}
+
+	fmt.Print("\033[?25h")
+	fmt.Scanln()
 }

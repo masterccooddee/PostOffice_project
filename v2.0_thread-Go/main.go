@@ -19,7 +19,7 @@ var wg sync.WaitGroup
 var mg []sa.Out_msg
 var system = runtime.GOOS
 
-const Threads = 16
+const Threads = 20
 
 func print(mg *[]sa.Out_msg) {
 	lineCounter := 0
@@ -110,14 +110,14 @@ func main() {
 	wg.Add(Threads)
 
 	go print(&mg)
-
+	eval_start := time.Now()
 	for i := 0; i < Threads; i++ {
 
 		go sa.SA(input_time, len(array), start, &wg, &mg, i)
 	}
 
 	wg.Wait() //等待所有SA goroutine完成
-
+	eval_cost := int(time.Since(eval_start).Seconds())
 	time.Sleep(1 * time.Millisecond)
 	done <- true //結束print goroutine
 	fmt.Printf("\033[%dB\033[0m", Threads*3+Threads)
@@ -136,8 +136,8 @@ func main() {
 		}
 
 	}
-
+	fmt.Printf("Benchmark = %d x  %d = %d \n", mg[0].Ttime, eval_cost, mg[0].Ttime*eval_cost)
 	fmt.Print("\033[?25h")
-	time.Sleep(5 * time.Minute)
+	fmt.Scanln()
 
 }

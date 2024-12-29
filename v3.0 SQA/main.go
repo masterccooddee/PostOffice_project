@@ -96,12 +96,15 @@ func main() {
 
 	go print(&msg)
 
+	eval_start := time.Now()
 	for i := 0; i < Threads; i++ {
 		alpha_coff := float32(i) / float32(Threads-1)
 		go SQA(input_time, start, iter_per_thread, &wg, &msg, i, alpha_coff)
 	}
 
 	wg.Wait()
+	eval_cost := int(time.Since(eval_start).Seconds())
+
 	time.Sleep(1 * time.Millisecond)
 	done <- struct{}{}
 	fmt.Printf("\033[%dB\033[0m", Threads*3+Threads)
@@ -126,7 +129,8 @@ func main() {
 		}
 
 	}
-
+	benchmark := msg[0].Ttime * eval_cost
+	fmt.Printf("Benchmark = %d x  %d = %d \n", msg[0].Ttime, eval_cost, benchmark)
 	fmt.Print("\033[?25h")
 	fmt.Scanln()
 }

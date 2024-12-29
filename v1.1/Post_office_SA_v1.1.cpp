@@ -8,11 +8,12 @@
 #include <vector>
 #include <algorithm>
 #include <iomanip>
+#include <chrono>
 #include "google_map.hpp"
 
 #define T0 1e6        //初始溫度
 #define iter 250      //迭代次數
-#define TRY_MAX 1.8e7 //嘗試次數最大值
+#define TRY_MAX 1.8e4 //嘗試次數最大值
 
 
 using namespace std;
@@ -51,26 +52,26 @@ void loading(size_t process, size_t total, string s = "") {
 
 time_t get_time(string s) {
 
-	struct tm t = { 0 };
-	int hour, min, sec;
-	sscanf_s(s.c_str(), "%d:%d:%d", &hour, &min, &sec);
-	t.tm_year = 2024 - 1900;
-	t.tm_mon = 9 - 1;
-	t.tm_mday = 11;
-	t.tm_hour = hour;
-	t.tm_min = min;
-	t.tm_sec = sec;
-	return mktime(&t);
+    struct tm t = { 0 };
+    int hour, min, sec;
+    sscanf_s(s.c_str(), "%d:%d:%d", &hour, &min, &sec);
+    t.tm_year = 2024 - 1900;
+    t.tm_mon = 9 - 1;
+    t.tm_mday = 11;
+    t.tm_hour = hour;
+    t.tm_min = min;
+    t.tm_sec = sec;
+    return mktime(&t);
 }
 
 void show_time(time_t t) {
 
     struct tm ttime;
-	localtime_s(&ttime, &t);
-	char t_out[80] = { 0 };
-	strftime(t_out, sizeof(t_out), "%Y/%m/%d %A %H:%M:%S\n", &ttime);
-	cout << t_out;
-    
+    localtime_s(&ttime, &t);
+    char t_out[80] = { 0 };
+    strftime(t_out, sizeof(t_out), "%Y/%m/%d %A %H:%M:%S\n", &ttime);
+    cout << t_out;
+
 }
 
 
@@ -83,9 +84,9 @@ int main()
     string s;
     cin >> s;
     tm ttime;
-    
+
     if (s == "-1") {
-		now = time(0);
+        now = time(0);
         localtime_s(&ttime, &now);
         while (ttime.tm_hour < 9 || ttime.tm_hour > 16) {
             cout << utf8.to_bytes(L"輸入時間範圍錯誤，請重新輸入: ");
@@ -96,30 +97,30 @@ int main()
                 now = get_time(s);
             localtime_s(&ttime, &now);
         }
-		
-	}
-	else {
-		now = get_time(s);
+
+    }
+    else {
+        now = get_time(s);
         localtime_s(&ttime, &now);
-        while(ttime.tm_hour < 9 || ttime.tm_hour > 16) {
-			cout << utf8.to_bytes(L"輸入時間範圍錯誤，請重新輸入: ");
-			cin >> s;
+        while (ttime.tm_hour < 9 || ttime.tm_hour > 16) {
+            cout << utf8.to_bytes(L"輸入時間範圍錯誤，請重新輸入: ");
+            cin >> s;
             if (s == "-1")
                 now = time(0);
             else
-			    now = get_time(s);
-			localtime_s(&ttime, &now);
-		}
-		
-	}
+                now = get_time(s);
+            localtime_s(&ttime, &now);
+        }
+
+    }
 
     time_t now_t = now;
-    
-    
+
+
     localtime_s(&ttime, &now);
     int start_hour = ttime.tm_hour;
     int now_hour = ttime.tm_hour;
-    
+
     vector<unordered_map<int, post_office>> pfs_v;
 
     //創建g_map類別從google獲取距離資料
@@ -135,7 +136,7 @@ int main()
         pfs_v.push_back(pfs);
         //cout << gm << endl;
     }
-    
+
     unordered_map<int, post_office> pfs = pfs_v[0];
 
     //用來產生隨機數
@@ -152,9 +153,9 @@ int main()
     int s_time_cs = 1e9; //移動的最短距離
     int start = 0; //起始與終點郵局
 
-    
 
-    cout << utf8.to_bytes(L"開始時間: ") ;
+
+    cout << utf8.to_bytes(L"開始時間: ");
     printf("%02d:%02d:%02d\n", ttime.tm_hour, ttime.tm_min, ttime.tm_sec);
 
     for (int i = 0; i < pfs.size(); i++) {
@@ -190,7 +191,7 @@ int main()
 
     //嘗試次數
     int try_cnt = 1;
-
+    auto eval_start = chrono::steady_clock::now();
     for (int i = 0; i < iter; i++) {
 
         if (try_cnt > TRY_MAX) {
@@ -198,10 +199,10 @@ int main()
             break;
         }
 
-        if(t0 < 1e-2) {
-			cout << "Temperature is under 1e-8!!!" << endl;
-			break;
-		}
+        if (t0 < 1e-2) {
+            cout << "Temperature is under 1e-2!!!" << endl;
+            break;
+        }
 
         int l_time_cs = 0;
 
@@ -263,21 +264,23 @@ int main()
         // 不接受結果
         else {
             i--;
-            now_vec = shortest_vec;
+
             loading(try_cnt, TRY_MAX, "Trying, please wait...");
             try_cnt++;
 
         }
         //遊歷路徑重新組合
         //shuffle(now_vec.begin() + 1, now_vec.end() - 1, gen);
-         int first = id(gen);
-         int second = id(gen);
-         while(first == second) {
-			 second = id(gen);
-		 }
+        int first = id(gen);
+        int second = id(gen);
+        while (first == second) {
+            second = id(gen);
+        }
         swap(now_vec[first], now_vec[second]);
 
     }
+    auto eval_end = chrono::steady_clock::now();
+    int duration = chrono::duration_cast<chrono::seconds>(eval_end - eval_start).count();
 
     cout << endl;
     cout << "Shortest Distance: " << s_time_cs << endl;
@@ -289,6 +292,7 @@ int main()
         else
             cout << " -> " << pfs[*it].name;
     }
+    printf("\n\nBenchmark = %d x %d = %d", s_time_cs, duration, s_time_cs * duration);
     cout << endl << endl;
 #endif 
 
@@ -353,7 +357,7 @@ int main()
     }
     cout << endl;
 #endif
-
+    system("pause");
     return 0;
 }
 

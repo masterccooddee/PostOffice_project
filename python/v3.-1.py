@@ -3,9 +3,11 @@ import random
 from datetime import datetime, timedelta
 
 T0 = 1e6  # Initial temperature
-iter_count = 2500000000000  # Iteration count
-TRY_MAX = int(1.8e6)  # Maximum attempts
+ITER_COUNT = 1800000  # Iteration count
+TRY_MAX = 1e6  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
+ALPHA = 0.9  # Cooling rate
+EPSILON = 1e-3  # Minimum cost difference
 
 class PostOffice:
     def __init__(self, num, name, info):
@@ -40,6 +42,75 @@ def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
+def calculate_time_cost(route, pfs_v, now):
+    total_cost = 0
+    current_pfs = pfs_v[0]
+
+    for i in range(len(route) - 1):
+        from_pfs = route[i]
+        to_pfs = route[i + 1]
+        travel_time = current_pfs[from_pfs].info[str(to_pfs)][1]
+        total_cost += travel_time
+        now += timedelta(seconds=travel_time + STAY_TIME)
+
+        # Update the time-based post office data
+        if now.hour > 9 and now.hour <= 16:
+            current_pfs = pfs_v[now.hour - 9]
+
+    return total_cost
+
+def sqa(start, pfs_v, iter_count, try_max):
+    current_pfs = pfs_v[0]
+    pf_vec = list(range(len(current_pfs)))
+    pf_vec.remove(start)
+    pf_vec = [start] + pf_vec + [start]
+    now_vec = pf_vec.copy()
+    shortest_vec = []
+    shortest_time = float('inf')
+    temperature = T0
+    try_count = 0
+
+    for iteration in range(iter_count):
+        if try_count > try_max:
+            print("Maximum attempts reached.")
+            break
+
+        if temperature < EPSILON:
+            print("Temperature too low, stopping.")
+            break
+
+        now = datetime(2024, 9, 11, 9, 0, 0)
+        current_cost = calculate_time_cost(now_vec, pfs_v, now)
+
+        # Update progress bar
+        loading(iteration, iter_count, "Optimizing route")
+
+        # Evaluate the new route
+        if current_cost < shortest_time:
+            shortest_time = current_cost
+            shortest_vec = now_vec.copy()
+            temperature *= ALPHA
+            try_count = 0
+
+            print(f"\nIteration {iteration}: New shortest time {shortest_time}")
+        else:
+            diff = current_cost - shortest_time
+            acceptance_prob = 1 / (1 + pow(2.71828, diff / temperature))
+            if random.random() < acceptance_prob:
+                shortest_time = current_cost
+                shortest_vec = now_vec.copy()
+
+            try_count += 1
+
+        # Randomly shuffle the route for next iteration
+        first = random.randint(1, len(now_vec) - 2)
+        second = random.randint(1, len(now_vec) - 2)
+        while first == second:
+            second = random.randint(1, len(now_vec) - 2)
+        now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
+
+    return shortest_time, shortest_vec
+
 def main():
     gm = GMap()
     now = None
@@ -47,17 +118,15 @@ def main():
     print("Welcome to the Postal Route Optimization Program")
     s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
 
-    # Time validation
-    while True:
-        if s == "-1":
-            now = datetime.now()
-        else:
-            now = get_time(s)
+    if s == "-1":
+        now = datetime.now()
+    else:
+        now = get_time(s)
 
-        if 9 <= now.hour <= 16:
-            break
-        print("Invalid time range. Please re-enter: ")
-        s = input()
+    # Validate time range
+    while now.hour < 9 or now.hour > 16:
+        s = input("Invalid time range. Please re-enter: ")
+        now = get_time(s)
 
     print("Start time: ", now.strftime("%H:%M:%S"))
 
@@ -70,83 +139,17 @@ def main():
         gm.from_json(filename)
         pfs_v.append(gm.pfs)
 
-    pfs = pfs_v[0]
-
-    # Generate random seed
-    seed = random.randint(0, 1000000)
-    print("Seed:", seed)
-    random.seed(seed)
-
-    pf_vec = list(range(len(pfs)))  # Postal office order
-    best_vec = []  # Best postal office order
-    best_time_cs = float('inf')  # Best travel time
     start = int(input("Enter starting post office code: "))
+    shortest_time, shortest_vec = sqa(start, pfs_v, ITER_COUNT, TRY_MAX)
 
-    while not (0 <= start < len(pfs)):
-        print("Input out of range, please re-enter: ")
-        start = int(input())
-
-    pf_vec.remove(start)
-    pf_vec = [start] + pf_vec + [start]  # Establish postal office order
-
-    now_vec = pf_vec.copy()
-
-    # Initialize penalty coefficients
-    dmin = min(min(pfs[i].info[str(j)][1] for j in pfs[i].info) for i in pfs)
-    dmax = max(max(pfs[i].info[str(j)][1] for j in pfs[i].info) for i in pfs)
-    penalty_values = [dmin + (dmax - dmin) * i / 10 for i in range(11)]
-
-    # Multiple Coefficients Trial Method
-    for alpha in penalty_values:
-        t0 = T0
-        successful_iterations = 0
-
-        for i in range(iter_count):
-            if t0 < 1e-2:
-                break
-
-            l_time_cs = 0
-
-            # Calculate total time for this combination
-            for j in range(len(now_vec) - 1):
-                travel_time = pfs[now_vec[j]].info[str(now_vec[j + 1])][1]  # Get travel time
-                l_time_cs += travel_time
-                now += timedelta(seconds=travel_time + STAY_TIME)  # Update time including stay time
-
-                # Check if we need to switch to the next hourly post office data
-                if now.hour > (now.hour + j) and now.hour <= 16:
-                    pfs = pfs_v[now.hour - 9]
-
-            # Adjust time difference with penalty coefficient
-            total_cost = l_time_cs + alpha * (len(set(now_vec)) - len(now_vec))
-            if total_cost < best_time_cs:
-                best_vec = now_vec.copy()
-                best_time_cs = total_cost
-                successful_iterations += 1
-
-                print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')  # Show successful iterations
-                print("Now:", now_vec, "Best:", best_vec, "Time cost:", best_time_cs)
-                print("=" * 100)
-
-                t0 *= 0.9  # Cooling schedule
-
-            # Randomly rearrange the path
-            first = random.randint(1, len(now_vec) - 2)
-            second = random.randint(1, len(now_vec) - 2)
-            while first == second:
-                second = random.randint(1, len(now_vec) - 2)
-            now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
-
-    print("\nBest Time:", best_time_cs)
+    print("\nShortest Time:", shortest_time)
     print("Path:")
-
-    for i, it in enumerate(best_vec):
+    for i, it in enumerate(shortest_vec):
         if i == 0:
-            print(pfs[it].name, end="")  # No arrow before the first element (starting point)
+            print(gm.pfs[it].name, end="")
         else:
-            print(" ->", pfs[it].name, end="")  # Add arrow before subsequent elements
-
-    print()  # Print newline after the path
+            print(" ->", gm.pfs[it].name, end="")
+    print()
 
 if __name__ == "__main__":
     main()

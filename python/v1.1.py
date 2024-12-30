@@ -40,7 +40,21 @@ def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
-def calculate_time_cost(route, gm, start_time):
+def preload_data(gm, start_hour):
+    """
+    預加載指定小時範圍內的郵局數據。
+    """
+    loaded_data = {}
+    for hour in range(start_hour, min(start_hour + 4, 17)):  # 確保不超過16點
+        filename = f"post_office_with_info_{hour}.json"
+        gm.from_json(filename)
+        loaded_data[hour] = gm.pfs.copy()  # 深拷貝數據
+    return loaded_data
+
+def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
+    """
+    使用預加載數據計算路徑時間成本。
+    """
     total_cost_time = 0
     now = start_time
 
@@ -48,11 +62,7 @@ def calculate_time_cost(route, gm, start_time):
         from_pfs = route[i]
         to_pfs = route[i + 1]
 
-        # Load post office data based on current hour
-        filename = f"post_office_with_info_{now.hour}.json"
-        gm.from_json(filename)
-        current_pfs = gm.pfs
-
+        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
         travel_data = current_pfs[from_pfs].info[str(to_pfs)]
         travel_distance, travel_time = travel_data
 
@@ -68,7 +78,6 @@ def main():
     print("Welcome to the Postal Route Optimization Program")
     s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
 
-    # Time validation
     while True:
         if s == "-1":
             now = datetime.now()
@@ -82,27 +91,16 @@ def main():
 
     print("Start time: ", now.strftime("%H:%M:%S"))
 
-    # Load post office data
-    pfs_v = []
-    for i in range(4):
-        if now.hour + i > 16:
-            break
-        filename = f"post_office_with_info_{now.hour + i}.json"
-        gm.from_json(filename)
-        pfs_v.append(gm.pfs)
+    # 預加載所有可能的郵局數據
+    gm_data_cache = preload_data(gm, now.hour)
 
-    pfs = pfs_v[0]
-
-    seed = random.randint(0, 1000000)
-    print("Seed:", seed)
-    random.seed(seed)
-
-    pf_vec = list(range(len(pfs)))  # Postal office order
+    # 剩下的程式邏輯保持不變，計算時間時使用 `calculate_time_cost_with_cache`
+    pf_vec = list(range(len(gm_data_cache[now.hour])))  # Postal office order
     shortest_vec = []
     s_time_cs = float('inf')
     start = int(input("Enter starting post office code: "))
 
-    while not (0 <= start < len(pfs)):
+    while not (0 <= start < len(gm_data_cache[now.hour])):
         print("Input out of range, please re-enter: ")
         start = int(input())
 
@@ -124,7 +122,7 @@ def main():
             print("Temperature is too low!")
             break
 
-        l_time_cs = calculate_time_cost(now_vec, gm, now)
+        l_time_cs = calculate_time_cost_with_cache(now_vec, gm_data_cache, now)
 
         if l_time_cs < s_time_cs:
             y = 1
@@ -177,15 +175,15 @@ def main():
 
     for i, it in enumerate(shortest_vec):
         if i == 0:
-            print(pfs[it].name, end="")
+            print(gm_data_cache[now.hour][it].name, end="")
         else:
-            print(" ->", pfs[it].name, end="")
+            print(" ->", gm_data_cache[now.hour][it].name, end="")
 
     print()
 
-    total_runtime = calculate_time_cost(shortest_vec, gm, now)
+    total_runtime = calculate_time_cost_with_cache(shortest_vec, gm_data_cache, now)
     print("Total Runtime (including stops):", total_runtime, "seconds")
     print("benchmark:", total_runtime * s_time_cs)
-    
+
 if __name__ == "__main__":
     main()

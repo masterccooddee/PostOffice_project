@@ -40,6 +40,27 @@ def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
+def calculate_time_cost(route, gm, start_time):
+    total_cost_time = 0
+    now = start_time
+
+    for i in range(len(route) - 1):
+        from_pfs = route[i]
+        to_pfs = route[i + 1]
+
+        # Load post office data based on current hour
+        filename = f"python/post_office_with_info_{now.hour}.json"
+        gm.from_json(filename)
+        current_pfs = gm.pfs
+
+        travel_data = current_pfs[from_pfs].info[str(to_pfs)]
+        travel_distance, travel_time = travel_data
+
+        total_cost_time += travel_time
+        now += timedelta(seconds=travel_time + STAY_TIME)
+
+    return total_cost_time
+
 def main():
     gm = GMap()
     now = None
@@ -104,24 +125,15 @@ def main():
             print("Temperature is too low!")
             break
 
-        l_time_cs = 0
-
         # Calculate total time for this combination
-        for j in range(len(now_vec) - 1):
-            travel_time = pfs[now_vec[j]].info[str(now_vec[j + 1])][1]  # Get travel time
-            l_time_cs += travel_time
-            now += timedelta(seconds=travel_time + STAY_TIME)  # Update time including stay time
-
-            # Check if we need to switch to the next hourly post office data
-            if now.hour > (now.hour + j) and now.hour <= 16:
-                pfs = pfs_v[now.hour - 9]
+        l_time_cs = calculate_time_cost(now_vec, gm, now)
 
         # Simulated annealing acceptance criterion
         if l_time_cs < s_time_cs:
             y = 1
         else:
             time_diff = l_time_cs - s_time_cs
-            # 限制時間差
+            # Limit time_diff
             if time_diff > 700:
                 time_diff = 700
             elif time_diff < -700:
@@ -176,6 +188,10 @@ def main():
             print(" ->", pfs[it].name, end="")  # Add arrow before subsequent elements
 
     print()  # Print newline after the path
+
+    # Calculate total runtime
+    total_runtime = calculate_time_cost(shortest_vec, gm, now)
+    print("Total Runtime (including stops):", total_runtime, "seconds")
 
 if __name__ == "__main__":
     main()

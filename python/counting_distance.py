@@ -1,7 +1,9 @@
+###距離檢查工具
+
 import json
 from datetime import datetime, timedelta
 
-STAY_TIME = 0  # Default stay time in seconds
+STAY_TIME = 300
 
 class PostOffice:
     def __init__(self, num, name, info):
@@ -33,9 +35,7 @@ def calculate_time_cost(route, gm, now):
         from_pfs = route[i]
         to_pfs = route[i + 1]
 
-        # Dynamically load the correct file based on current time
-        current_hour_index = now.hour - 9
-        filename = f"python/post_office_with_info_{current_hour_index + 9}.json"
+        filename = f"python/post_office_with_info_{now.hour}.json"
         print(f"Loading data for hour: {now.hour}, from file: {filename}")
         gm.from_json(filename)
         current_pfs = gm.pfs
@@ -46,10 +46,8 @@ def calculate_time_cost(route, gm, now):
         total_cost_distance += travel_distance
         total_cost_time += travel_time
 
-        # Correct time adjustment including stay time
         now += timedelta(seconds=travel_time + STAY_TIME)
 
-        # Print details
         print(f"From Post Office {from_pfs} to {to_pfs}: +{travel_distance} meters, +{travel_time} seconds")
         print(f"Stay Time: +{STAY_TIME} seconds")
         print(f"Current Time: {now.strftime('%H:%M:%S')}")
@@ -81,7 +79,6 @@ def main():
 
     print("Start time: ", now.strftime("%H:%M:%S"))
 
-    # Input route
     route = list(map(int, input("Enter the route as space-separated post office IDs: ").split()))
     total_time = quick_calculate_distance(route, gm, now)
 

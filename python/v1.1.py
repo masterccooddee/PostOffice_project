@@ -49,7 +49,7 @@ def calculate_time_cost(route, gm, start_time):
         to_pfs = route[i + 1]
 
         # Load post office data based on current hour
-        filename = f"python/post_office_with_info_{now.hour}.json"
+        filename = f"post_office_with_info_{now.hour}.json"
         gm.from_json(filename)
         current_pfs = gm.pfs
 
@@ -87,20 +87,19 @@ def main():
     for i in range(4):
         if now.hour + i > 16:
             break
-        filename = f"python/post_office_with_info_{now.hour + i}.json"
+        filename = f"post_office_with_info_{now.hour + i}.json"
         gm.from_json(filename)
         pfs_v.append(gm.pfs)
 
     pfs = pfs_v[0]
 
-    # Generate random seed
     seed = random.randint(0, 1000000)
     print("Seed:", seed)
     random.seed(seed)
 
     pf_vec = list(range(len(pfs)))  # Postal office order
-    shortest_vec = []  # Shortest postal office order
-    s_time_cs = float('inf')  # Shortest travel time
+    shortest_vec = []
+    s_time_cs = float('inf')
     start = int(input("Enter starting post office code: "))
 
     while not (0 <= start < len(pfs)):
@@ -108,13 +107,13 @@ def main():
         start = int(input())
 
     pf_vec.remove(start)
-    pf_vec = [start] + pf_vec + [start]  # Establish postal office order
+    pf_vec = [start] + pf_vec + [start] 
     now_vec = pf_vec.copy()
 
     # Simulated annealing algorithm
     t0 = T0
     try_cnt = 1
-    successful_iterations = 0  # Initialize the successful iterations counter
+    successful_iterations = 0
 
     for i in range(iter_count):
         if try_cnt > TRY_MAX:
@@ -125,15 +124,12 @@ def main():
             print("Temperature is too low!")
             break
 
-        # Calculate total time for this combination
         l_time_cs = calculate_time_cost(now_vec, gm, now)
 
-        # Simulated annealing acceptance criterion
         if l_time_cs < s_time_cs:
             y = 1
         else:
             time_diff = l_time_cs - s_time_cs
-            # Limit time_diff
             if time_diff > 700:
                 time_diff = 700
             elif time_diff < -700:
@@ -143,9 +139,8 @@ def main():
                 print("Temperature is too low, adjusting to minimum value.")
                 t0 = 1e-10
 
-            # Ensure time_diff / t0 does not exceed a threshold
             exp_argument = time_diff / t0
-            if exp_argument > 709:  # Limiting to avoid overflow
+            if exp_argument > 709:
                 y = 0
             elif exp_argument < -709:
                 y = 1
@@ -157,13 +152,13 @@ def main():
         if y > x:
             shortest_vec = now_vec.copy()
             s_time_cs = l_time_cs
-            successful_iterations += 1  # Increment successful iteration counter
+            successful_iterations += 1 
 
-            print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')  # Show successful iterations
+            print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')
             print("Now:", now_vec, "Shortest:", shortest_vec, "Time cost:", s_time_cs)
             print("=" * 100)
 
-            t0 *= 0.9  # Cooling schedule
+            t0 *= 0.9
             try_cnt = 0
         else:
             i -= 1
@@ -171,7 +166,6 @@ def main():
             loading(try_cnt, TRY_MAX, "Trying, please wait...")
             try_cnt += 1
 
-        # Randomly rearrange the path
         first = random.randint(1, len(now_vec) - 2)
         second = random.randint(1, len(now_vec) - 2)
         while first == second:
@@ -183,15 +177,15 @@ def main():
 
     for i, it in enumerate(shortest_vec):
         if i == 0:
-            print(pfs[it].name, end="")  # No arrow before the first element (starting point)
+            print(pfs[it].name, end="")
         else:
-            print(" ->", pfs[it].name, end="")  # Add arrow before subsequent elements
+            print(" ->", pfs[it].name, end="")
 
-    print()  # Print newline after the path
+    print()
 
-    # Calculate total runtime
     total_runtime = calculate_time_cost(shortest_vec, gm, now)
     print("Total Runtime (including stops):", total_runtime, "seconds")
-
+    print("benchmark:", total_runtime * s_time_cs)
+    
 if __name__ == "__main__":
     main()

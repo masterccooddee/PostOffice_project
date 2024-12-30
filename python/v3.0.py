@@ -5,21 +5,21 @@ import threading
 import time
 
 T0 = 1e6  # Initial temperature
-iter_count = 25000000  # Iteration count
-TRY_MAX = int(1.8e6)  # Maximum attempts
+ITER_COUNT = 1800000  # Iteration count
+TRY_MAX = 1e6  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
+ALPHA = 0.9  # Cooling rate
+EPSILON = 1e-3  # Minimum cost difference
 
-# Global variable to track progress
+# Global variable for progress tracking
 progress = {}
 progress_lock = threading.Lock()
-
 
 class PostOffice:
     def __init__(self, num, name, info):
         self.num = num
         self.name = name
         self.info = info
-
 
 class GMap:
     def __init__(self):
@@ -32,26 +32,125 @@ class GMap:
                 post_office = PostOffice(item['index'], item['name'], item['info'])
                 self.pfs[post_office.num] = post_office
 
+def loading(process, total, s=""):
+    count = 0
+    percent = int(process * 100.0 / total)
+    print(f"\r{s} {process} / {total} => {percent}% [", end='')
+
+    for j in range(5, percent + 1, 5):
+        print("##", end='')  # Show progress bar
+        count += 1
+
+    print(".. " * (20 - count), end='')
+    print("]", end='\r')
 
 def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
+def calculate_time_cost(route, pfs_v, now):
+    total_cost = 0
+    current_pfs = pfs_v[0]
 
-class OutMsg:
-    def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None):
-        self.message1 = message1
-        self.message2 = message2
-        self.s_r = s_r
-        self.ttime = ttime
-        self.arrive_time = arrive_time
+    for i in range(len(route) - 1):
+        from_pfs = route[i]
+        to_pfs = route[i + 1]
+        travel_time = current_pfs[from_pfs].info[str(to_pfs)][1]
+        total_cost += travel_time
+        now += timedelta(seconds=travel_time + STAY_TIME)
 
+        # Update the time-based post office data
+        if now.hour > 9 and now.hour <= 16:
+            current_pfs = pfs_v[now.hour - 9]
 
-def sa_with_multiple_coefficients(input_time, start, output_list, thread_id):
+    return total_cost
+
+def sqa(start, pfs_v, iter_count, try_max, output_list, thread_id):
     global progress
 
+    current_pfs = pfs_v[0]
+    pf_vec = list(range(len(current_pfs)))
+    pf_vec.remove(start)
+    pf_vec = [start] + pf_vec + [start]
+    now_vec = pf_vec.copy()
+    shortest_vec = []
+    shortest_time = float('inf')
+    temperature = T0
+    try_count = 0
+
+    for iteration in range(iter_count):
+        if try_count > try_max:
+            output_list[thread_id] = f"Thread {thread_id}: Maximum attempts reached."
+            break
+
+        if temperature < EPSILON:
+            output_list[thread_id] = f"Thread {thread_id}: Temperature too low, stopping."
+            break
+
+        now = datetime(2024, 9, 11, 9, 0, 0)
+        current_cost = calculate_time_cost(now_vec, pfs_v, now)
+
+        # Update progress
+        with progress_lock:
+            progress[thread_id] = f"Iteration {iteration}/{iter_count}" if iteration % 100 == 0 else progress[thread_id]
+
+        # Evaluate the new route
+        if current_cost < shortest_time:
+            shortest_time = current_cost
+            shortest_vec = now_vec.copy()
+            temperature *= ALPHA
+            try_count = 0
+
+            output_list[thread_id] = f"Thread {thread_id}: Iteration {iteration}, New shortest time {shortest_time}"
+        else:
+            diff = current_cost - shortest_time
+            acceptance_prob = 1 / (1 + pow(2.71828, diff / temperature))
+            if random.random() < acceptance_prob:
+                shortest_time = current_cost
+                shortest_vec = now_vec.copy()
+
+            try_count += 1
+
+        # Randomly shuffle the route for next iteration
+        first = random.randint(1, len(now_vec) - 2)
+        second = random.randint(1, len(now_vec) - 2)
+        while first == second:
+            second = random.randint(1, len(now_vec) - 2)
+        now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
+
+    output_list[thread_id] = f"Thread {thread_id}: Finished. Shortest Time: {shortest_time}, Path: {shortest_vec}"
+    with progress_lock:
+        progress[thread_id] = "Completed"
+
+def display_progress(num_threads):
+    global progress
+    while True:
+        with progress_lock:
+            for thread_id in range(num_threads):
+                status = progress.get(thread_id, "Not started")
+                print(f"Thread {thread_id}: {status}", end=' | ')
+            print("\r", end="")
+        time.sleep(0.5)
+        if all(progress.get(thread_id) == "Completed" for thread_id in range(num_threads)):
+            break
+
+def main():
     gm = GMap()
-    now = get_time(input_time)
+    now = None
+
+    print("Welcome to the Postal Route Optimization Program")
+    s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
+
+    if s == "-1":
+        now = datetime.now()
+    else:
+        now = get_time(s)
+
+    while now.hour < 9 or now.hour > 16:
+        s = input("Invalid time range. Please re-enter: ")
+        now = get_time(s)
+
+    print("Start time: ", now.strftime("%H:%M:%S"))
 
     pfs_v = []
     for i in range(4):
@@ -61,136 +160,33 @@ def sa_with_multiple_coefficients(input_time, start, output_list, thread_id):
         gm.from_json(filename)
         pfs_v.append(gm.pfs)
 
-    pfs = pfs_v[0]
-
-    # Generate random seed
-    seed = random.randint(0, 1000000)
-    random.seed(seed)
-
-    pf_vec = list(range(len(pfs)))  # Postal office order
-    best_vec = []  # Best postal office order
-    best_time_cs = float('inf')  # Best travel time
-
-    now_vec = pf_vec.copy()
-    now_vec.remove(start)
-    now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
-
-    # Initialize penalty coefficients
-    dmin = min(min(pfs[i].info[str(j)][1] for j in pfs[i].info) for i in pfs)
-    dmax = max(max(pfs[i].info[str(j)][1] for j in pfs[i].info) for i in pfs)
-    penalty_values = [dmin + (dmax - dmin) * i / 10 for i in range(11)]
-
-    # Iterate over multiple penalty coefficients
-    for alpha in penalty_values:
-        t0 = T0
-        successful_iterations = 0
-
-        for i in range(iter_count):
-            if t0 < 1e-2:
-                break
-
-            l_time_cs = 0
-            for j in range(len(now_vec) - 1):
-                travel_time = pfs[now_vec[j]].info[str(now_vec[j + 1])][1]
-                l_time_cs += travel_time
-                now += timedelta(seconds=travel_time + STAY_TIME)
-
-                if now.hour > (now.hour + j) and now.hour <= 16:
-                    pfs = pfs_v[now.hour - 9]
-
-            # Adjust time difference with penalty coefficient
-            total_cost = l_time_cs + alpha * (len(set(now_vec)) - len(now_vec))
-            if total_cost < best_time_cs:
-                best_vec = now_vec.copy()
-                best_time_cs = total_cost
-                successful_iterations += 1
-                t0 *= 0.9  # Cooling schedule
-
-            # Rearrange the path
-            first = random.randint(1, len(now_vec) - 2)
-            second = random.randint(1, len(now_vec) - 2)
-            while first == second:
-                second = random.randint(1, len(now_vec) - 2)
-            now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
-
-    output_list[thread_id] = OutMsg(
-        message1=f"Finish Best Route: {best_vec}, Time: {best_time_cs}s",
-        s_r=best_vec,
-        ttime=best_time_cs
-    )
-    with progress_lock:
-        progress[thread_id] = "Completed"
-
-
-def display_progress(num_threads):
-    global progress
-    while True:
-        with progress_lock:
-            for thread_id in range(num_threads):
-                status = progress.get(thread_id, "Not started")
-                print(f"{thread_id}: {status}", end=' | ')
-            print("\r", end="")
-        time.sleep(0.5)
-        if all(progress.get(thread_id) == "Completed" for thread_id in range(num_threads)):
-            break
-
-
-if __name__ == "__main__":
-    now = None
-
-    print("Welcome to the Postal Route Optimization Program")
-    s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
-
-    while True:
-        if s == "-1":
-            now = datetime.now()
-        else:
-            now = get_time(s)
-
-        if 9 <= now.hour <= 16:
-            break
-        print("Invalid time range. Please re-enter: ")
-        s = input()
-
-    print("Start time: ", now.strftime("%H:%M:%S"))
-
     start = int(input("Enter starting post office code: "))
-
-    while not (0 <= start < 16):
-        print("Input out of range, please re-enter: ")
-        start = int(input())
-        print("Start at: ", start)
-
-    time.sleep(0.5)
 
     num_threads = 4
     threads = []
-    outputs = [OutMsg() for _ in range(num_threads)]
+    outputs = [None] * num_threads
 
-    # Initialize progress dictionary
+
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
-    # Start simulated annealing threads
     for thread_id in range(num_threads):
-        thread = threading.Thread(target=sa_with_multiple_coefficients, args=(s, start, outputs, thread_id))
+        thread = threading.Thread(target=sqa, args=(start, pfs_v, ITER_COUNT, TRY_MAX, outputs, thread_id))
         threads.append(thread)
         thread.start()
 
-    # Start display progress thread
     display_thread = threading.Thread(target=display_progress, args=(num_threads,))
     display_thread.start()
 
-    # Wait for all simulated annealing threads to complete
     for thread in threads:
         thread.join()
 
-    # Wait for display progress thread to complete
+    # Wait for progress display to complete
     display_thread.join()
 
     print("\nAll threads completed!")
     for output in outputs:
-        if output.message1:
-            print(output.message1)
-        else:
-            print(f"Thread failed to complete.")
+        print(output)
+
+if __name__ == "__main__":
+    main()

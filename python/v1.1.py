@@ -7,45 +7,54 @@ iter_count = 2500000000000  # Iteration count
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 
-
 class PostOffice:
     def __init__(self, num, name, info):
         self.num = num
         self.name = name
         self.info = info
 
-
 class GMap:
     def __init__(self):
         self.pfs = {}
 
     def from_json(self, filename):
-        with open(filename, "r", encoding="utf-8") as f:
+        with open(filename, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            for item in data["post_office"]:
-                post_office = PostOffice(item["index"], item["name"], item["info"])
+            for item in data['post_office']:
+                post_office = PostOffice(item['index'], item['name'], item['info'])
                 self.pfs[post_office.num] = post_office
-
 
 def loading(process, total, s=""):
     count = 0
     percent = int(process * 100.0 / total)
-    print(f"\r{s} {process} / {total} => {percent}% [", end="")
+    print(f"\r{s} {process} / {total} => {percent}% [", end='')
 
     for j in range(5, percent + 1, 5):
-        print("##", end="")  # Show progress bar
+        print("##", end='')  # Show progress bar
         count += 1
 
-    print(".. " * (20 - count), end="")
-    print("]", end="\r")
-
+    print(".. " * (20 - count), end='')
+    print("]", end='\r')
 
 def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
+def preload_data(gm, start_hour):
+    """
+    預加載指定小時範圍內的郵局數據。
+    """
+    loaded_data = {}
+    for hour in range(start_hour, min(start_hour + 4, 17)):  # 確保不超過16點
+        filename = f"post_office_with_info_{hour}.json"
+        gm.from_json(filename)
+        loaded_data[hour] = gm.pfs.copy()  # 深拷貝數據
+    return loaded_data
 
-def calculate_time_cost(route, gm, start_time):
+def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
+    """
+    使用預加載數據計算路徑時間成本。
+    """
     total_cost_time = 0
     now = start_time
 
@@ -53,11 +62,7 @@ def calculate_time_cost(route, gm, start_time):
         from_pfs = route[i]
         to_pfs = route[i + 1]
 
-        # Load post office data based on current hour
-        filename = f"python/post_office_with_info_{now.hour}.json"
-        gm.from_json(filename)
-        current_pfs = gm.pfs
-
+        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
         travel_data = current_pfs[from_pfs].info[str(to_pfs)]
         travel_distance, travel_time = travel_data
 
@@ -66,7 +71,6 @@ def calculate_time_cost(route, gm, start_time):
 
     return total_cost_time
 
-
 def main():
     gm = GMap()
     now = None
@@ -74,7 +78,6 @@ def main():
     print("Welcome to the Postal Route Optimization Program")
     s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
 
-    # Time validation
     while True:
         if s == "-1":
             now = datetime.now()
@@ -88,39 +91,27 @@ def main():
 
     print("Start time: ", now.strftime("%H:%M:%S"))
 
-    # Load post office data
-    pfs_v = []
-    for i in range(4):
-        if now.hour + i > 16:
-            break
-        filename = f"python/post_office_with_info_{now.hour + i}.json"
-        gm.from_json(filename)
-        pfs_v.append(gm.pfs)
+    # 預加載所有可能的郵局數據
+    gm_data_cache = preload_data(gm, now.hour)
 
-    pfs = pfs_v[0]
-
-    # Generate random seed
-    seed = random.randint(0, 1000000)
-    print("Seed:", seed)
-    random.seed(seed)
-
-    pf_vec = list(range(len(pfs)))  # Postal office order
-    shortest_vec = []  # Shortest postal office order
-    s_time_cs = float("inf")  # Shortest travel time
+    # 剩下的程式邏輯保持不變，計算時間時使用 `calculate_time_cost_with_cache`
+    pf_vec = list(range(len(gm_data_cache[now.hour])))  # Postal office order
+    shortest_vec = []
+    s_time_cs = float('inf')
     start = int(input("Enter starting post office code: "))
 
-    while not (0 <= start < len(pfs)):
+    while not (0 <= start < len(gm_data_cache[now.hour])):
         print("Input out of range, please re-enter: ")
         start = int(input())
 
     pf_vec.remove(start)
-    pf_vec = [start] + pf_vec + [start]  # Establish postal office order
+    pf_vec = [start] + pf_vec + [start] 
     now_vec = pf_vec.copy()
 
     # Simulated annealing algorithm
     t0 = T0
     try_cnt = 1
-    successful_iterations = 0  # Initialize the successful iterations counter
+    successful_iterations = 0
 
     for i in range(iter_count):
         if try_cnt > TRY_MAX:
@@ -131,15 +122,12 @@ def main():
             print("Temperature is too low!")
             break
 
-        # Calculate total time for this combination
-        l_time_cs = calculate_time_cost(now_vec, gm, now)
+        l_time_cs = calculate_time_cost_with_cache(now_vec, gm_data_cache, now)
 
-        # Simulated annealing acceptance criterion
         if l_time_cs < s_time_cs:
             y = 1
         else:
             time_diff = l_time_cs - s_time_cs
-            # Limit time_diff
             if time_diff > 700:
                 time_diff = 700
             elif time_diff < -700:
@@ -149,29 +137,26 @@ def main():
                 print("Temperature is too low, adjusting to minimum value.")
                 t0 = 1e-10
 
-            # Ensure time_diff / t0 does not exceed a threshold
             exp_argument = time_diff / t0
-            if exp_argument > 709:  # Limiting to avoid overflow
+            if exp_argument > 709:
                 y = 0
             elif exp_argument < -709:
                 y = 1
             else:
-                y = 1 / (2.71828**exp_argument)
+                y = 1 / (2.71828 ** exp_argument)
 
         x = random.uniform(0.0, 1.0)
 
         if y > x:
             shortest_vec = now_vec.copy()
             s_time_cs = l_time_cs
-            successful_iterations += 1  # Increment successful iteration counter
+            successful_iterations += 1 
 
-            print(
-                f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end=""
-            )  # Show successful iterations
+            print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')
             print("Now:", now_vec, "Shortest:", shortest_vec, "Time cost:", s_time_cs)
             print("=" * 100)
 
-            t0 *= 0.9  # Cooling schedule
+            t0 *= 0.9
             try_cnt = 0
         else:
             i -= 1
@@ -179,7 +164,6 @@ def main():
             loading(try_cnt, TRY_MAX, "Trying, please wait...")
             try_cnt += 1
 
-        # Randomly rearrange the path
         first = random.randint(1, len(now_vec) - 2)
         second = random.randint(1, len(now_vec) - 2)
         while first == second:
@@ -191,18 +175,15 @@ def main():
 
     for i, it in enumerate(shortest_vec):
         if i == 0:
-            print(
-                pfs[it].name, end=""
-            )  # No arrow before the first element (starting point)
+            print(gm_data_cache[now.hour][it].name, end="")
         else:
-            print(" ->", pfs[it].name, end="")  # Add arrow before subsequent elements
+            print(" ->", gm_data_cache[now.hour][it].name, end="")
 
-    print()  # Print newline after the path
+    print()
 
-    # Calculate total runtime
-    total_runtime = calculate_time_cost(shortest_vec, gm, now)
+    total_runtime = calculate_time_cost_with_cache(shortest_vec, gm_data_cache, now)
     print("Total Runtime (including stops):", total_runtime, "seconds")
-
+    print("benchmark:", total_runtime * s_time_cs)
 
 if __name__ == "__main__":
     main()

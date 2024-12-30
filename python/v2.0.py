@@ -39,31 +39,38 @@ def get_time(s):
 
 
 class OutMsg:
-    def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None):
+    def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None, benchmark=None):
         self.message1 = message1
         self.message2 = message2
         self.s_r = s_r
         self.ttime = ttime
         self.arrive_time = arrive_time
+        self.benchmark = benchmark
 
 
-def sa(input_time, start, output_list, thread_id):
-    global progress
-
+def preload_data(input_time):
+    """
+    預加載所有郵局數據到記憶體中，避免重複讀取文件。
+    """
     gm = GMap()
     now = get_time(input_time)
-
-    pfs_v = []
+    pfs_v = {}
     for i in range(4):
-        if now.hour + i > 16:
+        hour = now.hour + i
+        if hour > 16:
             break
-        filename = f"python/post_office_with_info_{now.hour + i}.json"
+        filename = f"post_office_with_info_{hour}.json"
         gm.from_json(filename)
-        pfs_v.append(gm.pfs)
+        pfs_v[hour] = gm.pfs.copy()
+    return pfs_v
 
-    pfs = pfs_v[0]
 
-    # Generate random seed
+def sa(input_time, start, output_list, thread_id, pfs_v):
+    global progress
+
+    now = get_time(input_time)
+    pfs = pfs_v[now.hour]
+
     seed = random.randint(0, 1000000)
     random.seed(seed)
 
@@ -80,6 +87,8 @@ def sa(input_time, start, output_list, thread_id):
     t0 = T0
     try_cnt = 1
     successful_iterations = 0  # Initialize the successful iterations counter
+
+    start_time = time.time()
 
     for i in range(iter_count):
         if try_cnt > TRY_MAX:
@@ -99,10 +108,9 @@ def sa(input_time, start, output_list, thread_id):
             now += timedelta(seconds=travel_time + STAY_TIME)  # Update time including stay time
 
             # Check if we need to switch to the next hourly post office data
-            if now.hour > (now.hour + j) and now.hour <= 16:
-                pfs = pfs_v[now.hour - 9]
+            if now.hour in pfs_v:
+                pfs = pfs_v[now.hour]
 
-        # Simulated annealing acceptance criterion
         if l_time_cs < s_time_cs:
             y = 1
         else:
@@ -142,20 +150,24 @@ def sa(input_time, start, output_list, thread_id):
             i -= 1
             now_vec = shortest_vec.copy()
             with progress_lock:
-                progress[thread_id] = f"Trying, please wait... {try_cnt}/{TRY_MAX}"
+                progress[thread_id] = f"{try_cnt}/{TRY_MAX}"
             try_cnt += 1
 
-        # Randomly rearrange the path
         first = random.randint(1, len(now_vec) - 2)
         second = random.randint(1, len(now_vec) - 2)
         while first == second:
             second = random.randint(1, len(now_vec) - 2)
         now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
 
+    end_time = time.time()
+    runtime = end_time - start_time
+    benchmark = runtime * s_time_cs
+
     output_list[thread_id] = OutMsg(
         message1=f"Finish Shortest Route: {shortest_vec}, Time: {s_time_cs}s",
         s_r=shortest_vec,
-        ttime=s_time_cs
+        ttime=s_time_cs,
+        benchmark=benchmark
     )
     with progress_lock:
         progress[thread_id] = "Completed"
@@ -210,9 +222,11 @@ if __name__ == "__main__":
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
+    pfs_v = preload_data(s)
+
     # 啟動模擬退火的執行緒
     for thread_id in range(num_threads):
-        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id))
+        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, pfs_v))
         threads.append(thread)
         thread.start()
 
@@ -220,16 +234,15 @@ if __name__ == "__main__":
     display_thread = threading.Thread(target=display_progress, args=(num_threads,))
     display_thread.start()
 
-    # 等待所有模擬退火執行緒完成
     for thread in threads:
         thread.join()
 
-    # 等待顯示進度的執行緒完成
     display_thread.join()
 
     print("\nAll threads completed!")
-    for output in outputs:
+    for thread_id, output in enumerate(outputs):
         if output.message1:
-            print(output.message1)
+            print(f"Thread {thread_id}: {output.message1}")
+            print(f"Benchmark: {output.benchmark:.2f}, Runtime: {output.ttime:.2f}s")
         else:
-            print(f"Thread failed to complete.")
+            print(f"Thread {thread_id} failed to complete.")

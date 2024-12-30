@@ -1,6 +1,7 @@
 import json
 import random
 from datetime import datetime, timedelta
+import time
 
 T0 = 1e6  # Initial temperature
 iter_count = 2500000000000  # Iteration count
@@ -108,6 +109,7 @@ def main():
     pf_vec = [start] + pf_vec + [start] 
     now_vec = pf_vec.copy()
 
+    start_time = time.time()
     # Simulated annealing algorithm
     t0 = T0
     try_cnt = 1
@@ -172,6 +174,7 @@ def main():
 
     print("\nShortest Time:", s_time_cs)
     print("Path:")
+    end_time = time.time()
 
     for i, it in enumerate(shortest_vec):
         if i == 0:
@@ -181,9 +184,8 @@ def main():
 
     print()
 
-    total_runtime = calculate_time_cost_with_cache(shortest_vec, gm_data_cache, now)
-    print("Total Runtime (including stops):", total_runtime, "seconds")
-    print("benchmark:", total_runtime * s_time_cs)
+    print("Execution Time:", round(end_time - start_time, 2), "seconds")
+    print("benchmark:", round(end_time - start_time, 2) * s_time_cs)
 
 if __name__ == "__main__":
     main()

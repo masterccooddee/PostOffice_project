@@ -7,38 +7,43 @@ iter_count = 2500000000000  # Iteration count
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 
+
 class PostOffice:
     def __init__(self, num, name, info):
         self.num = num
         self.name = name
         self.info = info
 
+
 class GMap:
     def __init__(self):
         self.pfs = {}
 
     def from_json(self, filename):
-        with open(filename, 'r', encoding='utf-8') as f:
+        with open(filename, "r", encoding="utf-8") as f:
             data = json.load(f)
-            for item in data['post_office']:
-                post_office = PostOffice(item['index'], item['name'], item['info'])
+            for item in data["post_office"]:
+                post_office = PostOffice(item["index"], item["name"], item["info"])
                 self.pfs[post_office.num] = post_office
+
 
 def loading(process, total, s=""):
     count = 0
     percent = int(process * 100.0 / total)
-    print(f"\r{s} {process} / {total} => {percent}% [", end='')
+    print(f"\r{s} {process} / {total} => {percent}% [", end="")
 
     for j in range(5, percent + 1, 5):
-        print("##", end='')  # Show progress bar
+        print("##", end="")  # Show progress bar
         count += 1
 
-    print(".. " * (20 - count), end='')
-    print("]", end='\r')
+    print(".. " * (20 - count), end="")
+    print("]", end="\r")
+
 
 def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
+
 
 def calculate_time_cost(route, gm, start_time):
     total_cost_time = 0
@@ -60,6 +65,7 @@ def calculate_time_cost(route, gm, start_time):
         now += timedelta(seconds=travel_time + STAY_TIME)
 
     return total_cost_time
+
 
 def main():
     gm = GMap()
@@ -87,7 +93,7 @@ def main():
     for i in range(4):
         if now.hour + i > 16:
             break
-        filename = f"post_office_with_info_{now.hour + i}.json"
+        filename = f"python/post_office_with_info_{now.hour + i}.json"
         gm.from_json(filename)
         pfs_v.append(gm.pfs)
 
@@ -100,7 +106,7 @@ def main():
 
     pf_vec = list(range(len(pfs)))  # Postal office order
     shortest_vec = []  # Shortest postal office order
-    s_time_cs = float('inf')  # Shortest travel time
+    s_time_cs = float("inf")  # Shortest travel time
     start = int(input("Enter starting post office code: "))
 
     while not (0 <= start < len(pfs)):
@@ -150,7 +156,7 @@ def main():
             elif exp_argument < -709:
                 y = 1
             else:
-                y = 1 / (2.71828 ** exp_argument)
+                y = 1 / (2.71828**exp_argument)
 
         x = random.uniform(0.0, 1.0)
 
@@ -159,7 +165,9 @@ def main():
             s_time_cs = l_time_cs
             successful_iterations += 1  # Increment successful iteration counter
 
-            print(f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end='')  # Show successful iterations
+            print(
+                f"\rIteration: {successful_iterations} Temp: {t0:.3f}", end=""
+            )  # Show successful iterations
             print("Now:", now_vec, "Shortest:", shortest_vec, "Time cost:", s_time_cs)
             print("=" * 100)
 
@@ -183,7 +191,9 @@ def main():
 
     for i, it in enumerate(shortest_vec):
         if i == 0:
-            print(pfs[it].name, end="")  # No arrow before the first element (starting point)
+            print(
+                pfs[it].name, end=""
+            )  # No arrow before the first element (starting point)
         else:
             print(" ->", pfs[it].name, end="")  # Add arrow before subsequent elements
 
@@ -192,6 +202,7 @@ def main():
     # Calculate total runtime
     total_runtime = calculate_time_cost(shortest_vec, gm, now)
     print("Total Runtime (including stops):", total_runtime, "seconds")
+
 
 if __name__ == "__main__":
     main()

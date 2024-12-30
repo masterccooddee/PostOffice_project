@@ -65,12 +65,34 @@ def preload_data(input_time):
     return pfs_v
 
 
+def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
+    """
+    使用預加載的數據計算路徑的時間成本。
+    """
+    total_cost_time = 0
+    now = start_time
+
+    for i in range(len(route) - 1):
+        from_pfs = route[i]
+        to_pfs = route[i + 1]
+
+        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
+        travel_data = current_pfs[from_pfs].info[str(to_pfs)]
+        travel_distance, travel_time = travel_data
+
+        total_cost_time += travel_time
+        now += timedelta(seconds=travel_time + STAY_TIME)
+
+    return total_cost_time
+
+
 def sa(input_time, start, output_list, thread_id, pfs_v):
     global progress
 
     now = get_time(input_time)
     pfs = pfs_v[now.hour]
 
+    # Generate random seed
     seed = random.randint(0, 1000000)
     random.seed(seed)
 
@@ -99,18 +121,10 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
             output_list[thread_id].message1 = "Temperature is too low!"
             break
 
-        l_time_cs = 0
+        # 計算目前的路徑時間成本
+        l_time_cs = calculate_time_cost_with_cache(now_vec, pfs_v, now)
 
-        # Calculate total time for this combination
-        for j in range(len(now_vec) - 1):
-            travel_time = pfs[now_vec[j]].info[str(now_vec[j + 1])][1]  # Get travel time
-            l_time_cs += travel_time
-            now += timedelta(seconds=travel_time + STAY_TIME)  # Update time including stay time
-
-            # Check if we need to switch to the next hourly post office data
-            if now.hour in pfs_v:
-                pfs = pfs_v[now.hour]
-
+        # Simulated annealing acceptance criterion
         if l_time_cs < s_time_cs:
             y = 1
         else:
@@ -153,6 +167,7 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
                 progress[thread_id] = f"{try_cnt}/{TRY_MAX}"
             try_cnt += 1
 
+        # Randomly rearrange the path
         first = random.randint(1, len(now_vec) - 2)
         second = random.randint(1, len(now_vec) - 2)
         while first == second:
@@ -166,7 +181,7 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
     output_list[thread_id] = OutMsg(
         message1=f"Finish Shortest Route: {shortest_vec}, Time: {s_time_cs}s",
         s_r=shortest_vec,
-        ttime=s_time_cs,
+        ttime=runtime,
         benchmark=benchmark
     )
     with progress_lock:
@@ -222,6 +237,7 @@ if __name__ == "__main__":
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
+    # 預加載所有郵局數據
     pfs_v = preload_data(s)
 
     # 啟動模擬退火的執行緒
@@ -234,9 +250,11 @@ if __name__ == "__main__":
     display_thread = threading.Thread(target=display_progress, args=(num_threads,))
     display_thread.start()
 
+    # 等待所有模擬退火執行緒完成
     for thread in threads:
         thread.join()
 
+    # 等待顯示進度的執行緒完成
     display_thread.join()
 
     print("\nAll threads completed!")

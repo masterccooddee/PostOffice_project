@@ -54,7 +54,7 @@ func Open_file(f string) (*simplejson.Json, error) {
 
 }
 
-func time_cost(route []int, j []*simplejson.Json, n_t time.Time) (int, time.Time) {
+func Time_cost(route []int, j []*simplejson.Json, n_t time.Time) (int, time.Time) {
 	var time_cost int
 	var dur int
 	var index int
@@ -70,6 +70,7 @@ func time_cost(route []int, j []*simplejson.Json, n_t time.Time) (int, time.Time
 			index = len(j) - 1
 		}
 		dur = j[index].Get("post_office").GetIndex(route[i]).Get("info").Get(strconv.Itoa(route[i+1])).GetIndex(1).MustInt()
+		//fmt.Println(dur)
 		time_cost += dur
 		n_t = n_t.Add(time.Duration(dur) * time.Second)
 
@@ -85,8 +86,8 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 	const T0 int = 1e6         //initial temperature
 	const iter int = 250       //iteration times
 	const alpha float64 = 0.9  //cooling rate
-	const T_end float64 = 1e-1 //end temperature
-	const TRY_MAX int = 2e7    //max try times
+	const T_end float64 = 1e-2 //end temperature
+	const TRY_MAX int = 1e6    //max try times
 
 	//enter time
 	var hour, min, second int
@@ -168,8 +169,7 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 			break
 		}
 
-		now = now_time
-		time_c, now = time_cost(now_route, j_s, now)
+		time_c, now = Time_cost(now_route, j_s, now_time)
 
 		l_time_cost = time_c
 		if l_time_cost < s_time_cost {
@@ -181,12 +181,15 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 		x := rand.Float64()
 
 		if y > x {
+
 			shortest_route = now_route
+			(*output_s)[id].S_r = nil
+			(*output_s)[id].S_r = append((*output_s)[id].S_r, shortest_route...)
 			s_time_cost = l_time_cost
 			arrival_time := now.Format("PM 03:04:05")
 			(*output_s)[id].Arrive_time = arrival_time
 
-			(*output_s)[id].Message1 = fmt.Sprintf("\r第%d次迭代 Temp: %.3f 最短路徑: %v Time: %d 秒 🚛 %s", i+1, temperature, shortest_route, s_time_cost, (*output_s)[id].Arrive_time)
+			(*output_s)[id].Message1 = fmt.Sprintf("\r第%d次迭代 Temp: %.3f 最短路徑: %v Time: %d 秒 🚛 %s", i+1, temperature, (*output_s)[id].S_r, s_time_cost, (*output_s)[id].Arrive_time)
 
 			//cool down
 			temperature *= alpha
@@ -222,8 +225,8 @@ func SA(input_time string, size int, start int, wg *sync.WaitGroup, output_s *[]
 		rand.Shuffle(len(now_route)-2, func(i, j int) { now_route[i+1], now_route[j+1] = now_route[j+1], now_route[i+1] })
 	}
 
-	(*output_s)[id].Message1 = fmt.Sprintf("\033[38;2;22;246;230m\rヾ(⌐■_■)ノ♪\033[0m Finish Shortest Route: %v Time: \033[38;2;230;193;38m%d\033[0m 秒  🚛 %s", shortest_route, s_time_cost, (*output_s)[id].Arrive_time)
-	(*output_s)[id].S_r = shortest_route
+	(*output_s)[id].Message1 = fmt.Sprintf("\033[38;2;22;246;230m\rヾ(⌐■_■)ノ♪\033[0m Finish Shortest Route: %v Time: \033[38;2;230;193;38m%d\033[0m 秒  🚛 %s", (*output_s)[id].S_r, s_time_cost, (*output_s)[id].Arrive_time)
+
 	(*output_s)[id].Ttime = s_time_cost
 
 }

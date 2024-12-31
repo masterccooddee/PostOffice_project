@@ -124,7 +124,6 @@ func main() {
 	fmt.Println()
 
 	sort.Sort(sa.MMSg(mg))
-
 	shortest_route := mg[0].S_r
 	fmt.Printf("最短路徑: %v Time: \033[38;2;230;193;38m%d\033[0m 秒 🚛抵達時間： %s\n", mg[0].S_r, mg[0].Ttime, mg[0].Arrive_time)
 
@@ -137,6 +136,7 @@ func main() {
 
 	}
 	fmt.Printf("Benchmark = %d x  %d = %d \n", mg[0].Ttime, eval_cost, mg[0].Ttime*eval_cost)
+
 	fmt.Print("\033[?25h")
 	fmt.Scanln()
 

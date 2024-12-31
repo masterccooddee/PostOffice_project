@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	total_iter int = 5e7
+	total_iter int = 1e6
 	wg         sync.WaitGroup
 	msg        MMSg
 	Threads    int = 20
@@ -131,6 +131,7 @@ func main() {
 	}
 	benchmark := msg[0].Ttime * eval_cost
 	fmt.Printf("Benchmark = %d x  %d = %d \n", msg[0].Ttime, eval_cost, benchmark)
+
 	fmt.Print("\033[?25h")
 	fmt.Scanln()
 }

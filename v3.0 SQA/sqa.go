@@ -240,7 +240,8 @@ func SQA(input_time string, start int, iter_time int, wg *sync.WaitGroup, msg *M
 					}
 				}
 				route = append(route, start)
-				(*msg)[id].S_r = route
+				(*msg)[id].S_r = nil
+				(*msg)[id].S_r = append((*msg)[id].S_r, route...)
 			} else {
 				(*msg)[id].S_r = nil
 			}

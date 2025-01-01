@@ -1,19 +1,25 @@
 import json
 import random
 from datetime import datetime, timedelta
+import threading
+import time
 
 T0 = 1e6  # Initial temperature
-ITER_COUNT = 1800000  # Iteration count
-TRY_MAX = 1e6  # Maximum attempts
+iter_count = 25000000  # Iteration count
+TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
-ALPHA = 0.9  # Cooling rate
-EPSILON = 1e-3  # Minimum cost difference
+
+# 全域變數：記錄所有執行緒的進度
+progress = {}
+progress_lock = threading.Lock()
+
 
 class PostOffice:
     def __init__(self, num, name, info):
         self.num = num
         self.name = name
         self.info = info
+
 
 class GMap:
     def __init__(self):
@@ -26,130 +32,236 @@ class GMap:
                 post_office = PostOffice(item['index'], item['name'], item['info'])
                 self.pfs[post_office.num] = post_office
 
-def loading(process, total, s=""):
-    count = 0
-    percent = int(process * 100.0 / total)
-    print(f"\r{s} {process} / {total} => {percent}% [", end='')
-
-    for j in range(5, percent + 1, 5):
-        print("##", end='')  # Show progress bar
-        count += 1
-
-    print(".. " * (20 - count), end='')
-    print("]", end='\r')
 
 def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
 
-def calculate_time_cost(route, pfs_v, now):
-    total_cost = 0
-    current_pfs = pfs_v[0]
+
+class OutMsg:
+    def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None, benchmark=None):
+        self.message1 = message1
+        self.message2 = message2
+        self.s_r = s_r
+        self.ttime = ttime
+        self.arrive_time = arrive_time
+        self.benchmark = benchmark
+
+
+def preload_data(input_time):
+    """
+    預加載所有郵局數據到記憶體中，避免重複讀取文件。
+    """
+    gm = GMap()
+    now = get_time(input_time)
+    pfs_v = {}
+    for i in range(4):
+        hour = now.hour + i
+        if hour > 16:
+            break
+        filename = f"post_office_with_info_{hour}.json"
+        gm.from_json(filename)
+        pfs_v[hour] = gm.pfs.copy()
+    return pfs_v
+
+
+def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
+    """
+    使用預加載的數據計算路徑的時間成本。
+    """
+    total_cost_time = 0
+    now = start_time
 
     for i in range(len(route) - 1):
         from_pfs = route[i]
         to_pfs = route[i + 1]
-        travel_time = current_pfs[from_pfs].info[str(to_pfs)][1]
-        total_cost += travel_time
+
+        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
+        travel_data = current_pfs[from_pfs].info[str(to_pfs)]
+        travel_distance, travel_time = travel_data
+
+        total_cost_time += travel_time
         now += timedelta(seconds=travel_time + STAY_TIME)
 
-        # Update the time-based post office data
-        if now.hour > 9 and now.hour <= 16:
-            current_pfs = pfs_v[now.hour - 9]
+    return total_cost_time
 
-    return total_cost
 
-def sqa(start, pfs_v, iter_count, try_max):
-    current_pfs = pfs_v[0]
-    pf_vec = list(range(len(current_pfs)))
-    pf_vec.remove(start)
-    pf_vec = [start] + pf_vec + [start]
+def sa(input_time, start, output_list, thread_id, pfs_v):
+    global progress
+
+    now = get_time(input_time)
+    pfs = pfs_v[now.hour]
+
+    # Generate random seed
+    seed = random.randint(0, 1000000)
+    random.seed(seed)
+
+    pf_vec = list(range(len(pfs)))  # Postal office order
+    shortest_vec = []  # Shortest postal office order
+    s_time_cs = float('inf')  # Shortest travel time
+
+    # Establish postal office order
     now_vec = pf_vec.copy()
-    shortest_vec = []
-    shortest_time = float('inf')
-    temperature = T0
-    try_count = 0
+    now_vec.remove(start)
+    now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
 
-    for iteration in range(iter_count):
-        if try_count > try_max:
-            print("Maximum attempts reached.")
+    penalty_h1 = 100  # Example penalty for condition H1
+    penalty_h2 = 200  # Example penalty for condition H2
+
+    print(f"Thread {thread_id} Initial Penalty Function Values: Penalty H1 = {penalty_h1}, Penalty H2 = {penalty_h2}")
+
+    t0 = T0
+    try_cnt = 1
+    successful_iterations = 0  # Initialize the successful iterations counter
+
+    start_time = time.time()
+
+    for i in range(iter_count):
+        if try_cnt > TRY_MAX:
+            output_list[thread_id].message1 = f"\nTried {TRY_MAX} times!!!!"
             break
 
-        if temperature < EPSILON:
-            print("Temperature too low, stopping.")
+        if t0 < 1e-2:
+            output_list[thread_id].message1 = "Temperature is too low!"
             break
 
-        now = datetime(2024, 9, 11, 9, 0, 0)
-        current_cost = calculate_time_cost(now_vec, pfs_v, now)
+        # 計算目前的路徑時間成本
+        total_cost_time = calculate_time_cost_with_cache(now_vec, pfs_v, now)
 
-        # Update progress bar
-        loading(iteration, iter_count, "Optimizing route")
+        # Add penalties
+        visit_count = [0] * len(pfs)
+        for node in now_vec:
+            visit_count[node] += 1
 
-        # Evaluate the new route
-        if current_cost < shortest_time:
-            shortest_time = current_cost
-            shortest_vec = now_vec.copy()
-            temperature *= ALPHA
-            try_count = 0
+        h1 = sum((count - 1) ** 2 for count in visit_count)
+        h2 = sum((visit_count[i] - 1) ** 2 for i in range(len(visit_count)))
 
-            print(f"\nIteration {iteration}: New shortest time {shortest_time}")
+        total_cost_with_penalty = total_cost_time + penalty_h1 * h1 + penalty_h2 * h2
+
+        # Simulated annealing acceptance criterion
+        if total_cost_with_penalty < s_time_cs:
+            y = 1
         else:
-            diff = current_cost - shortest_time
-            acceptance_prob = 1 / (1 + pow(2.71828, diff / temperature))
-            if random.random() < acceptance_prob:
-                shortest_time = current_cost
-                shortest_vec = now_vec.copy()
+            time_diff = total_cost_with_penalty - s_time_cs
+            time_diff = max(min(time_diff, 700), -700)
 
-            try_count += 1
+            exp_argument = time_diff / t0
+            y = 1 / (2.71828 ** exp_argument) if -709 < exp_argument < 709 else (1 if exp_argument < -709 else 0)
 
-        # Randomly shuffle the route for next iteration
+        x = random.uniform(0.0, 1.0)
+
+        if y > x:
+            shortest_vec = now_vec.copy()
+            s_time_cs = total_cost_with_penalty
+            successful_iterations += 1  # Increment successful iteration counter
+
+            output_list[thread_id].message1 = f"Iteration: {successful_iterations} Temp: {t0:.3f}"
+            output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec} Time cost: {s_time_cs}s"
+            output_list[thread_id].arrive_time = now.strftime("%I:%M:%S %p")
+
+            t0 *= 0.9  # Cooling schedule
+            try_cnt = 0
+        else:
+            i -= 1
+            now_vec = shortest_vec.copy()
+            with progress_lock:
+                progress[thread_id] = f"{try_cnt}/{TRY_MAX}"
+            try_cnt += 1
+
+        # Randomly rearrange the path
         first = random.randint(1, len(now_vec) - 2)
         second = random.randint(1, len(now_vec) - 2)
         while first == second:
             second = random.randint(1, len(now_vec) - 2)
         now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
 
-    return shortest_time, shortest_vec
+    end_time = time.time()
+    runtime = end_time - start_time
+    benchmark = runtime * s_time_cs
 
-def main():
-    gm = GMap()
+    output_list[thread_id] = OutMsg(
+        message1=f"Finish Shortest Route: {shortest_vec}, Time: {s_time_cs}s",
+        s_r=shortest_vec,
+        ttime=runtime,
+        benchmark=benchmark
+    )
+    with progress_lock:
+        progress[thread_id] = "Completed"
+
+
+def display_progress(num_threads):
+    global progress
+    while True:
+        with progress_lock:
+            for thread_id in range(num_threads):
+                status = progress.get(thread_id, "Not started")
+                print(f"{thread_id}: {status}", end=' | ')
+            print("\r", end="")
+        time.sleep(0.5)
+        if all(progress.get(thread_id) == "Completed" for thread_id in range(num_threads)):
+            break
+
+
+if __name__ == "__main__":
     now = None
 
     print("Welcome to the Postal Route Optimization Program")
     s = input("Enter start time (ex. 12:03:04 or -1 for now): ")
 
-    if s == "-1":
-        now = datetime.now()
-    else:
-        now = get_time(s)
+    while True:
+        if s == "-1":
+            now = datetime.now()
+        else:
+            now = get_time(s)
 
-    # Validate time range
-    while now.hour < 9 or now.hour > 16:
-        s = input("Invalid time range. Please re-enter: ")
-        now = get_time(s)
+        if 9 <= now.hour <= 16:
+            break
+        print("Invalid time range. Please re-enter: ")
+        s = input()
 
     print("Start time: ", now.strftime("%H:%M:%S"))
 
-    # Load post office data
-    pfs_v = []
-    for i in range(4):
-        if now.hour + i > 16:
-            break
-        filename = f"python/post_office_with_info_{now.hour + i}.json"
-        gm.from_json(filename)
-        pfs_v.append(gm.pfs)
-
     start = int(input("Enter starting post office code: "))
-    shortest_time, shortest_vec = sqa(start, pfs_v, ITER_COUNT, TRY_MAX)
 
-    print("\nShortest Time:", shortest_time)
-    print("Path:")
-    for i, it in enumerate(shortest_vec):
-        if i == 0:
-            print(gm.pfs[it].name, end="")
+    while not (0 <= start < 16):
+        print("Input out of range, please re-enter: ")
+        start = int(input())
+        print("Start at: ", start)
+
+    time.sleep(0.5)
+
+    num_threads = 4
+    threads = []
+    outputs = [OutMsg() for _ in range(num_threads)]
+
+    # Initialize progress dictionary
+    for thread_id in range(num_threads):
+        progress[thread_id] = "Initializing"
+
+    # Preload all postal office data
+    pfs_v = preload_data(s)
+
+    # Start threads for simulated annealing
+    for thread_id in range(num_threads):
+        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, pfs_v))
+        threads.append(thread)
+        thread.start()
+
+    # Start display progress thread
+    display_thread = threading.Thread(target=display_progress, args=(num_threads,))
+    display_thread.start()
+
+    # Wait for all simulated annealing threads to complete
+    for thread in threads:
+        thread.join()
+
+    # Wait for the display progress thread to complete
+    display_thread.join()
+
+    print("\nAll threads completed!")
+    for thread_id, output in enumerate(outputs):
+        if output.message1:
+            print(f"Thread {thread_id}: {output.message1}")
+            print(f"Benchmark: {output.benchmark:.2f}, Runtime: {output.ttime:.2f}s")
         else:
-            print(" ->", gm.pfs[it].name, end="")
-    print()
-
-if __name__ == "__main__":
-    main()
+            print(f"Thread {thread_id} failed to complete.")

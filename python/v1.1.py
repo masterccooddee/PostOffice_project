@@ -5,7 +5,7 @@ import time
 
 T0 = 1e6  # Initial temperature
 iter_count = 2500000000000  # Iteration count
-TRY_MAX = int(1.8e6)  # Maximum attempts
+TRY_MAX = int(2e8)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 
 class PostOffice:

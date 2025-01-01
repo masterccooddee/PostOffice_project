@@ -104,19 +104,21 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
     now_vec = pf_vec.copy()
     now_vec.remove(start)
     now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
-
-    penalty_h1 = 100  # Initial penalty coefficient for H1
-    penalty_h2 = 100  # Initial penalty coefficient for H2
+   # Calculate alpha dynamically
 
     max_distance = max(
         max(pfs[i].info[str(j)][0] for j in pfs[i].info.keys() if str(j) in pfs[i].info)
         for i in range(len(pfs))
     )
 
-    alpha = max_distance / 2
+    min_distance = min(
+        min(pfs[i].info[str(j)][0] for j in pfs[i].info.keys() if str(j) in pfs[i].info)
+        for i in range(len(pfs))
+    )
 
-    print(f"Thread {thread_id} Initial Penalty Function Values:")
-    print(f"Penalty H1 = {penalty_h1}, Penalty H2 = {penalty_h2}, Alpha = {alpha}")
+    alpha = random.uniform(min_distance, max_distance) / 2  # Randomized alpha
+
+    print(f"Thread {thread_id} Initial Penalty Function Values: Alpha = {alpha}")
 
     t0 = T0
     try_cnt = 1
@@ -144,7 +146,8 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
         h1 = sum((count - 1) ** 2 for count in visit_count)
         h2 = sum((visit_count[i] - 1) ** 2 for i in range(len(visit_count)))
 
-        total_cost_with_penalty = total_cost_time + alpha * (penalty_h1 * h1 + penalty_h2 * h2)
+        # Total cost with penalties
+        total_cost_with_penalty = total_cost_time + alpha * (h1 + h2)
 
         # Simulated annealing acceptance criterion
         if total_cost_with_penalty < s_time_cs:
@@ -188,7 +191,7 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
     benchmark = runtime * s_time_cs
 
     output_list[thread_id] = OutMsg(
-        message1=f"Finish Shortest Route: {shortest_vec}, Time: {s_time_cs}s",
+        message1=f"Finish Shortest Route: {shortest_vec}, Time cost with penalty: {s_time_cs}s",
         s_r=shortest_vec,
         ttime=runtime,
         benchmark=benchmark

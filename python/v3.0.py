@@ -9,17 +9,15 @@ iter_count = 25000000  # Iteration count
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 
-# 全域變數：記錄所有執行緒的進度
+# Global variables to track progress
 progress = {}
 progress_lock = threading.Lock()
-
 
 class PostOffice:
     def __init__(self, num, name, info):
         self.num = num
         self.name = name
         self.info = info
-
 
 class GMap:
     def __init__(self):
@@ -32,11 +30,9 @@ class GMap:
                 post_office = PostOffice(item['index'], item['name'], item['info'])
                 self.pfs[post_office.num] = post_office
 
-
 def get_time(s):
     t = datetime.strptime(s, "%H:%M:%S")
     return t.replace(year=2024, month=9, day=11)
-
 
 class OutMsg:
     def __init__(self, message1=None, message2=None, s_r=None, ttime=None, arrive_time=None, benchmark=None):
@@ -47,10 +43,9 @@ class OutMsg:
         self.arrive_time = arrive_time
         self.benchmark = benchmark
 
-
 def preload_data(input_time):
     """
-    預加載所有郵局數據到記憶體中，避免重複讀取文件。
+    Preload post office data into memory to avoid repeated file reading.
     """
     gm = GMap()
     now = get_time(input_time)
@@ -64,10 +59,9 @@ def preload_data(input_time):
         pfs_v[hour] = gm.pfs.copy()
     return pfs_v
 
-
 def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
     """
-    使用預加載的數據計算路徑的時間成本。
+    Use preloaded data to calculate the time cost of a route.
     """
     total_cost_time = 0
     now = start_time
@@ -76,7 +70,7 @@ def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
         from_pfs = route[i]
         to_pfs = route[i + 1]
 
-        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
+        current_pfs = gm_data_cache[now.hour]  # Get data for the current hour from cache
         travel_data = current_pfs[from_pfs].info[str(to_pfs)]
         travel_distance, travel_time = travel_data
 
@@ -85,8 +79,7 @@ def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
 
     return total_cost_time
 
-
-def sa(input_time, start, output_list, thread_id, pfs_v):
+def sa(input_time, start, output_list, thread_id, pfs_v, num_threads):
     global progress
 
     now = get_time(input_time)
@@ -104,8 +97,8 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
     now_vec = pf_vec.copy()
     now_vec.remove(start)
     now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
-   # Calculate alpha dynamically
 
+    # Calculate dynamic alpha
     max_distance = max(
         max(pfs[i].info[str(j)][0] for j in pfs[i].info.keys() if str(j) in pfs[i].info)
         for i in range(len(pfs))
@@ -116,13 +109,14 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
         for i in range(len(pfs))
     )
 
-    alpha = random.uniform(min_distance, max_distance) / 2  # Randomized alpha
+    alpha_coff = thread_id / (num_threads - 1)
+    alpha = alpha_coff * max_distance + min_distance
 
-    print(f"Thread {thread_id} Initial Penalty Function Values: Alpha = {alpha}")
+    print(f"Thread {thread_id} Initial Alpha: {alpha}")
 
     t0 = T0
     try_cnt = 1
-    successful_iterations = 0  # Initialize the successful iterations counter
+    successful_iterations = 0
 
     start_time = time.time()
 
@@ -135,7 +129,7 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
             output_list[thread_id].message1 = "Temperature is too low!"
             break
 
-        # 計算目前的路徑時間成本
+        # Calculate current route cost
         total_cost_time = calculate_time_cost_with_cache(now_vec, pfs_v, now)
 
         # Add penalties
@@ -146,7 +140,6 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
         h1 = sum((count - 1) ** 2 for count in visit_count)
         h2 = sum((visit_count[i] - 1) ** 2 for i in range(len(visit_count)))
 
-        # Total cost with penalties
         total_cost_with_penalty = total_cost_time + alpha * (h1 + h2)
 
         # Simulated annealing acceptance criterion
@@ -164,13 +157,13 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
         if y > x:
             shortest_vec = now_vec.copy()
             s_time_cs = total_cost_with_penalty
-            successful_iterations += 1  # Increment successful iteration counter
+            successful_iterations += 1
 
             output_list[thread_id].message1 = f"Iteration: {successful_iterations} Temp: {t0:.3f}"
             output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec} Time cost: {s_time_cs}s"
             output_list[thread_id].arrive_time = now.strftime("%I:%M:%S %p")
 
-            t0 *= 0.9  # Cooling schedule
+            t0 *= 0.9
             try_cnt = 0
         else:
             i -= 1
@@ -199,7 +192,6 @@ def sa(input_time, start, output_list, thread_id, pfs_v):
     with progress_lock:
         progress[thread_id] = "Completed"
 
-
 def display_progress(num_threads):
     global progress
     while True:
@@ -211,7 +203,6 @@ def display_progress(num_threads):
         time.sleep(0.5)
         if all(progress.get(thread_id) == "Completed" for thread_id in range(num_threads)):
             break
-
 
 if __name__ == "__main__":
     now = None
@@ -245,28 +236,25 @@ if __name__ == "__main__":
     threads = []
     outputs = [OutMsg() for _ in range(num_threads)]
 
-    # 初始化進度字典
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
-    # 預加載所有郵局數據
     pfs_v = preload_data(s)
 
-    # 啟動模擬退火的執行緒
     for thread_id in range(num_threads):
-        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, pfs_v))
+        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, pfs_v, num_threads))
         threads.append(thread)
         thread.start()
 
-    # 啟動顯示進度的執行緒
+    # Start progress display thread
     display_thread = threading.Thread(target=display_progress, args=(num_threads,))
     display_thread.start()
 
-    # 等待所有模擬退火執行緒完成
+    # Wait for all simulated annealing threads to complete
     for thread in threads:
         thread.join()
 
-    # 等待顯示進度的執行緒完成
+    # Wait for progress display thread to complete
     display_thread.join()
 
     print("\nAll threads completed!")

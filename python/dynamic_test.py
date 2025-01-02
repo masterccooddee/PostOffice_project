@@ -1,133 +1,50 @@
-import json
-import random
-from datetime import datetime, timedelta
-import time
-
-
-def load_data(file_name):
-    """Load JSON data from the given file."""
-    with open(file_name, 'r') as file:
-        data = json.load(file)
-    return data
-
-
-def make_matrix(file_name):
-    """Create a time cost matrix from the JSON file."""
-    data = load_data(file_name)
-    post_offices = data["post_office"]
-    n = len(post_offices)
-    time_matrix = [[0 if i == j else post_offices[i]["info"][str(j)][1] for j in range(n)] for i in range(n)]
-    return time_matrix
-
-
-def find_max_min(matrices):
-    """Find the maximum and minimum time costs across all matrices."""
-    times = []
-    for matrix in matrices:
-        for i in range(len(matrix)):
-            for j in range(len(matrix)):
-                if i != j:
-                    times.append(matrix[i][j])
-    return max(times), min(times)
-
-
-def calculate_time_cost_with_penalty(route, dis_matrices, start_time, alpha):
-    """Calculate the total time cost and penalties for a route."""
-    total_cost = 0
+def calculate_time_cost_matrix(route_matrix, gm_data_cache, start_time):
+    """
+    Use preloaded data and matrix to calculate the time cost of a route.
+    """
+    total_cost_time = 0
     now = start_time
 
-    for i in range(len(route) - 1):
-        from_idx = route[i]
-        to_idx = route[i + 1]
-        matrix_idx = min(now.hour - start_time.hour, len(dis_matrices) - 1)
-        travel_time = dis_matrices[matrix_idx][from_idx][to_idx]
-
-        total_cost += travel_time
-        now += timedelta(seconds=travel_time)
-
-    # Penalty calculations
-    visit_count = [0] * len(dis_matrices[0])
-    for node in route:
-        visit_count[node] += 1
-
-    penalty_h1 = sum((count - 1) ** 2 for count in visit_count)
-    penalty_h2 = sum((visit_count[i] - 1) ** 2 for i in range(len(visit_count)))
-
-    total_cost_with_penalty = total_cost + alpha * (penalty_h1 + penalty_h2)
-
-    print(f"Energy Function: Time Cost = {total_cost}, Penalty H1 = {penalty_h1}, Penalty H2 = {penalty_h2}, Total = {total_cost_with_penalty}")
-
-    return total_cost_with_penalty, now, penalty_h1, penalty_h2
-
-
-def simulated_annealing(input_time, start, iterations, dis_matrices, alpha_coeff):
-    """Simulated Annealing Algorithm for route optimization."""
-    hour, minute, second = map(int, input_time.split(":"))
-    start_time = datetime(2024, 12, 25, hour, minute, second)
-
-    n = len(dis_matrices[0])
-    route = list(range(n))
-    random.shuffle(route)
-
-    best_time = float('inf')
-    best_route = None
-    alpha = alpha_coeff * max(find_max_min(dis_matrices))
-
-    for iteration in range(iterations):
-        total_cost, new_time, h1, h2 = calculate_time_cost_with_penalty(route, dis_matrices, start_time, alpha)
-
-        if total_cost < best_time:
-            best_time = total_cost
-            best_route = route.copy()
-
-        # Randomly modify the route (flip two nodes)
-        i, j = random.sample(range(1, n), 2)
-        route[i], route[j] = route[j], route[i]
-
-    return best_route, best_time
-
-
-def preload_data(input_time):
-    """Preload all postal office data into memory to avoid repeated file reads."""
-    gm_data_cache = {}
-    hour = int(input_time.split(":")[0])
-
-    for offset in range(4):
-        current_hour = hour + offset
-        if current_hour > 16:
-            break
-
-        file_name = f"data/post_office_with_info_{current_hour}.json"
+    print(f"Starting calculation with route_matrix: {route_matrix}")
+    for i in range(len(route_matrix) - 1):
         try:
-            gm_data_cache[current_hour] = make_matrix(file_name)
-        except FileNotFoundError:
-            break
+            from_index = route_matrix[i].index(1)
+            to_index = route_matrix[i + 1].index(1)
+            current_pfs = gm_data_cache[now.hour]  # Get data for the current hour from cache
+            travel_data = current_pfs[from_index].info.get(str(to_index))
 
-    return gm_data_cache
+            if not travel_data:
+                print(f"Missing travel data for route: {from_index} -> {to_index}")
+                continue
 
+            travel_distance, travel_time = travel_data
+            print(f"Route {from_index} -> {to_index}: travel_time = {travel_time}")
 
-def main():
-    input_time = input("Enter start time (HH:MM:SS, or -1 for current time): ")
-    if input_time == "-1":
-        input_time = datetime.now().strftime("%H:%M:%S")
+            total_cost_time += travel_time
+            now += timedelta(seconds=travel_time + STAY_TIME)
 
-    start = int(input("Enter starting post office index: "))
-    iterations = int(input("Enter the number of iterations: "))
+        except Exception as e:
+            print(f"Error calculating cost for route {i}: {e}")
 
-    dis_matrices = []
-    for i in range(4):
-        try:
-            matrix = make_matrix(f"data/post_office_with_info_{9 + i}.json")
-            dis_matrices.append(matrix)
-        except FileNotFoundError:
-            break
-
-    alpha_coeff = 0.5
-    best_route, best_time = simulated_annealing(input_time, start, iterations, dis_matrices, alpha_coeff)
-
-    print(f"Best Route: {best_route}")
-    print(f"Best Time: {best_time}")
-
+    print(f"Total cost time: {total_cost_time}")
+    return total_cost_time
 
 if __name__ == "__main__":
-    main()
+    print("Testing calculate_time_cost_matrix")
+
+    # Load preloaded data
+    test_time = "10:00:00"
+    pfs_v = preload_data(test_time)
+
+    # Define a simple route matrix for testing
+    test_route_matrix = [
+        [1, 0, 0, 0],  # Start at index 0
+        [0, 1, 0, 0],  # Visit index 1
+        [0, 0, 1, 0],  # Visit index 2
+        [0, 0, 0, 1],  # Visit index 3
+        [1, 0, 0, 0],  # Return to index 0
+    ]
+
+    # Test calculate_time_cost_matrix
+    start_time = get_time(test_time)
+    calculate_time_cost_matrix(test_route_matrix, pfs_v, start_time)

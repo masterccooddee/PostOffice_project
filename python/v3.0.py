@@ -1,3 +1,4 @@
+import numpy as np
 import json
 import random
 from datetime import datetime, timedelta
@@ -59,37 +60,44 @@ def preload_data(input_time):
         pfs_v[hour] = gm.pfs.copy()
     return pfs_v
 
-def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
+def calculate_time_cost_with_cache_matrix(route, time_matrix, start_time):
     """
-    Use preloaded data to calculate the time cost of a route.
+    Use matrix operations to calculate the time cost of a route.
     """
     total_cost_time = 0
     now = start_time
-
+    
     for i in range(len(route) - 1):
         from_pfs = route[i]
         to_pfs = route[i + 1]
-
-        current_pfs = gm_data_cache[now.hour]  # Get data for the current hour from cache
-        travel_data = current_pfs[from_pfs].info[str(to_pfs)]
-        travel_distance, travel_time = travel_data
+        travel_time = time_matrix[from_pfs, to_pfs]
 
         total_cost_time += travel_time
         now += timedelta(seconds=travel_time + STAY_TIME)
 
     return total_cost_time
 
-def sa(input_time, start, output_list, thread_id, pfs_v, num_threads):
-    global progress
+def build_time_matrix(pfs):
+    """
+    Construct a time matrix from the post office data.
+    """
+    size = len(pfs)
+    time_matrix = np.full((size, size), np.inf)
 
-    now = get_time(input_time)
-    pfs = pfs_v[now.hour]
+    for i in range(size):
+        for j, data in pfs[i].info.items():
+            time_matrix[i, int(j)] = data[1]  # Travel time
+
+    return time_matrix
+
+def sa(input_time, start, output_list, thread_id, time_matrix, num_threads):
+    global progress
 
     # Generate random seed
     seed = random.randint(0, 1000000)
     random.seed(seed)
 
-    pf_vec = list(range(len(pfs)))  # Postal office order
+    pf_vec = list(range(len(time_matrix)))  # Postal office order
     shortest_vec = []  # Shortest postal office order
     s_time_cs = float('inf')  # Shortest travel time
 
@@ -99,18 +107,11 @@ def sa(input_time, start, output_list, thread_id, pfs_v, num_threads):
     now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
 
     # Calculate dynamic alpha
-    max_distance = max(
-        max(pfs[i].info[str(j)][0] for j in pfs[i].info.keys() if str(j) in pfs[i].info)
-        for i in range(len(pfs))
-    )
-
-    min_distance = min(
-        min(pfs[i].info[str(j)][0] for j in pfs[i].info.keys() if str(j) in pfs[i].info)
-        for i in range(len(pfs))
-    )
+    max_time = np.max(time_matrix[time_matrix < np.inf])
+    min_time = np.min(time_matrix[time_matrix > 0])
 
     alpha_coff = thread_id / (num_threads - 1)
-    alpha = alpha_coff * max_distance + min_distance
+    alpha = alpha_coff * max_time + min_time
 
     print(f"Thread {thread_id} Initial Alpha: {alpha}")
 
@@ -130,17 +131,12 @@ def sa(input_time, start, output_list, thread_id, pfs_v, num_threads):
             break
 
         # Calculate current route cost
-        total_cost_time = calculate_time_cost_with_cache(now_vec, pfs_v, now)
+        total_cost_time = calculate_time_cost_with_cache_matrix(now_vec, time_matrix, get_time(input_time))
 
         # Add penalties
-        visit_count = [0] * len(pfs)
-        for node in now_vec:
-            visit_count[node] += 1
-
-        h1 = sum((count - 1) ** 2 for count in visit_count)
-        h2 = sum((visit_count[i] - 1) ** 2 for i in range(len(visit_count)))
-
-        total_cost_with_penalty = total_cost_time + alpha * (h1 + h2)
+        visit_count = np.bincount(now_vec, minlength=len(time_matrix))
+        h1 = np.sum((visit_count - 1) ** 2)
+        total_cost_with_penalty = total_cost_time + alpha * h1
 
         # Simulated annealing acceptance criterion
         if total_cost_with_penalty < s_time_cs:
@@ -161,7 +157,6 @@ def sa(input_time, start, output_list, thread_id, pfs_v, num_threads):
 
             output_list[thread_id].message1 = f"Iteration: {successful_iterations} Temp: {t0:.3f}"
             output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec} Time cost: {s_time_cs}s"
-            output_list[thread_id].arrive_time = now.strftime("%I:%M:%S %p")
 
             t0 *= 0.9
             try_cnt = 0
@@ -236,13 +231,18 @@ if __name__ == "__main__":
     threads = []
     outputs = [OutMsg() for _ in range(num_threads)]
 
+    gm = GMap()
+    gm.from_json("post_office_with_info_9.json")
+    time_matrix = build_time_matrix(gm.pfs)
+
+    print("Time Matrix:")
+    print(time_matrix)
+
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
-    pfs_v = preload_data(s)
-
     for thread_id in range(num_threads):
-        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, pfs_v, num_threads))
+        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, time_matrix, num_threads))
         threads.append(thread)
         thread.start()
 

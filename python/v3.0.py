@@ -45,9 +45,6 @@ class OutMsg:
         self.benchmark = benchmark
 
 def preload_data(input_time):
-    """
-    Preload post office data into memory to avoid repeated file reading.
-    """
     gm = GMap()
     now = get_time(input_time)
     pfs_v = {}
@@ -60,17 +57,17 @@ def preload_data(input_time):
         pfs_v[hour] = gm.pfs.copy()
     return pfs_v
 
-def calculate_time_cost_with_cache_matrix(route, time_matrix, start_time):
-    """
-    Use matrix operations to calculate the time cost of a route.
-    """
+def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
     total_cost_time = 0
     now = start_time
-    
+
     for i in range(len(route) - 1):
         from_pfs = route[i]
         to_pfs = route[i + 1]
-        travel_time = time_matrix[from_pfs, to_pfs]
+
+        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
+        travel_data = current_pfs[from_pfs].info[str(to_pfs)]
+        travel_distance, travel_time = travel_data
 
         total_cost_time += travel_time
         now += timedelta(seconds=travel_time + STAY_TIME)
@@ -78,9 +75,6 @@ def calculate_time_cost_with_cache_matrix(route, time_matrix, start_time):
     return total_cost_time
 
 def build_time_matrix(pfs):
-    """
-    Construct a time matrix from the post office data.
-    """
     size = len(pfs)
     time_matrix = np.full((size, size), np.inf)
 
@@ -90,14 +84,14 @@ def build_time_matrix(pfs):
 
     return time_matrix
 
-def sa(input_time, start, output_list, thread_id, time_matrix, num_threads):
+def sa(input_time, start, output_list, thread_id, time_matrices, num_threads, gm_data_cache):
     global progress
 
     # Generate random seed
     seed = random.randint(0, 1000000)
     random.seed(seed)
 
-    pf_vec = list(range(len(time_matrix)))  # Postal office order
+    pf_vec = list(range(len(time_matrices[0])))  # Postal office order
     shortest_vec = []  # Shortest postal office order
     s_time_cs = float('inf')  # Shortest travel time
 
@@ -107,8 +101,8 @@ def sa(input_time, start, output_list, thread_id, time_matrix, num_threads):
     now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
 
     # Calculate dynamic alpha
-    max_time = np.max(time_matrix[time_matrix < np.inf])
-    min_time = np.min(time_matrix[time_matrix > 0])
+    max_time = max(np.max(matrix[matrix < np.inf]) for matrix in time_matrices)
+    min_time = min(np.min(matrix[matrix > 0]) for matrix in time_matrices)
 
     alpha_coff = thread_id / (num_threads - 1)
     alpha = alpha_coff * max_time + min_time
@@ -130,8 +124,12 @@ def sa(input_time, start, output_list, thread_id, time_matrix, num_threads):
             output_list[thread_id].message1 = "Temperature is too low!"
             break
 
+        # Select the appropriate matrix based on time
+        current_hour = get_time(input_time).hour
+        time_matrix = time_matrices[min(current_hour - 9, len(time_matrices) - 1)]
+
         # Calculate current route cost
-        total_cost_time = calculate_time_cost_with_cache_matrix(now_vec, time_matrix, get_time(input_time))
+        total_cost_time = calculate_time_cost_with_cache(now_vec, gm_data_cache, get_time(input_time))
 
         # Add penalties
         visit_count = np.bincount(now_vec, minlength=len(time_matrix))
@@ -155,8 +153,11 @@ def sa(input_time, start, output_list, thread_id, time_matrix, num_threads):
             s_time_cs = total_cost_with_penalty
             successful_iterations += 1
 
-            output_list[thread_id].message1 = f"Iteration: {successful_iterations} Temp: {t0:.3f}"
-            output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec} Time cost: {s_time_cs}s"
+            # Calculate shortest distance without penalties
+            shortest_distance = calculate_time_cost_with_cache(shortest_vec, gm_data_cache, get_time(input_time))
+
+            output_list[thread_id].message1 = f"Finish Shortest Route: {shortest_vec}, Time cost with penalty: {s_time_cs}s, Distance without penalty: {shortest_distance}s"
+            output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec}"
 
             t0 *= 0.9
             try_cnt = 0
@@ -179,7 +180,7 @@ def sa(input_time, start, output_list, thread_id, time_matrix, num_threads):
     benchmark = runtime * s_time_cs
 
     output_list[thread_id] = OutMsg(
-        message1=f"Finish Shortest Route: {shortest_vec}, Time cost with penalty: {s_time_cs}s",
+        message1=f"Finish Shortest Route: {shortest_vec}, Time cost with penalty: {s_time_cs}s, Distance without penalty: {shortest_distance}s",
         s_r=shortest_vec,
         ttime=runtime,
         benchmark=benchmark
@@ -231,18 +232,21 @@ if __name__ == "__main__":
     threads = []
     outputs = [OutMsg() for _ in range(num_threads)]
 
-    gm = GMap()
-    gm.from_json("post_office_with_info_9.json")
-    time_matrix = build_time_matrix(gm.pfs)
+    pfs_v = preload_data(s)
+    time_matrices = [build_time_matrix(pfs) for _, pfs in pfs_v.items()]
 
-    print("Time Matrix:")
-    print(time_matrix)
+    gm_data_cache = preload_data(s)
+
+    print("Time Matrices:")
+    for hour, matrix in zip(range(9, 9 + len(time_matrices)), time_matrices):
+        print(f"Hour {hour}:")
+        print(matrix)
 
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
     for thread_id in range(num_threads):
-        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, time_matrix, num_threads))
+        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, time_matrices, num_threads, gm_data_cache))
         threads.append(thread)
         thread.start()
 

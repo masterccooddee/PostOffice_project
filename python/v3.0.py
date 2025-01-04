@@ -6,7 +6,7 @@ import threading
 import time
 
 T0 = 1e6  # Initial temperature
-iter_count = 25000000  # Iteration count
+iter_count = 250000  # Iteration count
 TRY_MAX = int(1.8e6)  # Maximum attempts
 STAY_TIME = 300  # Default stay time in seconds
 
@@ -57,23 +57,6 @@ def preload_data(input_time):
         pfs_v[hour] = gm.pfs.copy()
     return pfs_v
 
-def calculate_time_cost_with_cache(route, gm_data_cache, start_time):
-    total_cost_time = 0
-    now = start_time
-
-    for i in range(len(route) - 1):
-        from_pfs = route[i]
-        to_pfs = route[i + 1]
-
-        current_pfs = gm_data_cache[now.hour]  # 從緩存中獲取當前小時的數據
-        travel_data = current_pfs[from_pfs].info[str(to_pfs)]
-        travel_distance, travel_time = travel_data
-
-        total_cost_time += travel_time
-        now += timedelta(seconds=travel_time + STAY_TIME)
-
-    return total_cost_time
-
 def build_time_matrix(pfs):
     size = len(pfs)
     time_matrix = np.full((size, size), np.inf)
@@ -84,23 +67,24 @@ def build_time_matrix(pfs):
 
     return time_matrix
 
-def sa(input_time, start, output_list, thread_id, time_matrices, num_threads, gm_data_cache):
+def sqa(input_time, start, output_list, thread_id, time_matrices, num_threads, gm_data_cache):
     global progress
 
-    # Generate random seed
+    # 初始化隨機種子
     seed = random.randint(0, 1000000)
     random.seed(seed)
 
-    pf_vec = list(range(len(time_matrices[0])))  # Postal office order
-    shortest_vec = []  # Shortest postal office order
-    s_time_cs = float('inf')  # Shortest travel time
+    # 初始化量子態矩陣 (route matrix)
+    num_cities = len(time_matrices[0])
+    ct_matrix = [[0 for _ in range(num_cities)] for _ in range(num_cities)]
+    for i in range(num_cities):
+        ct_matrix[i][i] = 1
+    ct_matrix[0][start] = 1
 
-    # Establish postal office order
-    now_vec = pf_vec.copy()
-    now_vec.remove(start)
-    now_vec = [start] + now_vec + [start]  # Adding start point at the beginning and end
+    best_time = float('inf')  # 最佳解的時間成本
+    shortest_route = []  # 最佳路徑
 
-    # Calculate dynamic alpha
+    # 動態計算 alpha
     max_time = max(np.max(matrix[matrix < np.inf]) for matrix in time_matrices)
     min_time = min(np.min(matrix[matrix > 0]) for matrix in time_matrices)
 
@@ -109,84 +93,87 @@ def sa(input_time, start, output_list, thread_id, time_matrices, num_threads, gm
 
     print(f"Thread {thread_id} Initial Alpha: {alpha}")
 
-    t0 = T0
-    try_cnt = 1
-    successful_iterations = 0
-
     start_time = time.time()
 
-    for i in range(iter_count):
-        if try_cnt > TRY_MAX:
-            output_list[thread_id].message1 = f"\nTried {TRY_MAX} times!!!!"
-            break
-
-        if t0 < 1e-2:
-            output_list[thread_id].message1 = "Temperature is too low!"
-            break
-
-        # Select the appropriate matrix based on time
+    for iteration in range(iter_count):
+        # 選擇對應的時間矩陣
         current_hour = get_time(input_time).hour
         time_matrix = time_matrices[min(current_hour - 9, len(time_matrices) - 1)]
 
-        # Calculate current route cost
-        total_cost_time = calculate_time_cost_with_cache(now_vec, gm_data_cache, get_time(input_time))
+        # 計算時間成本與懲罰項
+        total_cost_time, depart_time, h1, h2 = calculate_time_cost(ct_matrix, time_matrices, get_time(input_time), alpha)
+        total_cost = total_cost_time + alpha * (h1 + h2)
+        
+        if total_cost < best_time:
+            best_time = total_cost
+            true_cost = total_cost_time
+            shortest_route = extract_route(ct_matrix, start)
 
-        # Add penalties
-        visit_count = np.bincount(now_vec, minlength=len(time_matrix))
-        h1 = np.sum((visit_count - 1) ** 2)
-        total_cost_with_penalty = total_cost_time + alpha * h1
+            output_list[thread_id].message1 = (f"Iteration {iteration + 1}: Best Route: {shortest_route}, "
+                                               f"Time: {best_time:.2f}s, Departure: {depart_time}")
+            output_list[thread_id].s_r = shortest_route
+            output_list[thread_id].ttime = best_time
 
-        # Simulated annealing acceptance criterion
-        if total_cost_with_penalty < s_time_cs:
-            y = 1
-        else:
-            time_diff = total_cost_with_penalty - s_time_cs
-            time_diff = max(min(time_diff, 700), -700)
+        # 隨機翻轉比特（更新量子態）
+        for i in range(1, num_cities):
+            random_city = random.randint(0, num_cities - 1)
+            ct_matrix[i] = [0] * num_cities
+            ct_matrix[i][random_city] = 1
 
-            exp_argument = time_diff / t0
-            y = 1 / (2.71828 ** exp_argument) if -709 < exp_argument < 709 else (1 if exp_argument < -709 else 0)
-
-        x = random.uniform(0.0, 1.0)
-
-        if y > x:
-            shortest_vec = now_vec.copy()
-            s_time_cs = total_cost_with_penalty
-            successful_iterations += 1
-
-            # Calculate shortest distance without penalties
-            shortest_distance = calculate_time_cost_with_cache(shortest_vec, gm_data_cache, get_time(input_time))
-
-            output_list[thread_id].message1 = f"Finish Shortest Route: {shortest_vec}, Time cost with penalty: {s_time_cs}s, Distance without penalty: {shortest_distance}s"
-            output_list[thread_id].message2 = f"Now: {now_vec} Shortest: {shortest_vec}"
-
-            t0 *= 0.9
-            try_cnt = 0
-        else:
-            i -= 1
-            now_vec = shortest_vec.copy()
-            with progress_lock:
-                progress[thread_id] = f"{try_cnt}/{TRY_MAX}"
-            try_cnt += 1
-
-        # Randomly rearrange the path
-        first = random.randint(1, len(now_vec) - 2)
-        second = random.randint(1, len(now_vec) - 2)
-        while first == second:
-            second = random.randint(1, len(now_vec) - 2)
-        now_vec[first], now_vec[second] = now_vec[second], now_vec[first]
+        # 更新進度
+        with progress_lock:
+            progress[thread_id] = f"{iteration + 1}/{iter_count}"
 
     end_time = time.time()
     runtime = end_time - start_time
-    benchmark = runtime * s_time_cs
 
     output_list[thread_id] = OutMsg(
-        message1=f"Finish Shortest Route: {shortest_vec}, Time cost with penalty: {s_time_cs}s, Distance without penalty: {shortest_distance}s",
-        s_r=shortest_vec,
+        message1=f"Finished. Best Route: {shortest_route}, Best Time: {best_time:.2f}s, True cost: {true_cost:.2f}",
+        s_r=shortest_route,
         ttime=runtime,
-        benchmark=benchmark
+        benchmark=runtime * best_time
     )
+
     with progress_lock:
         progress[thread_id] = "Completed"
+
+def calculate_time_cost(route_matrix, time_matrices, current_time, alpha):
+    total_cost = 0
+    h1 = 0  # 懲罰項：每個城市被訪問一次
+    h2 = 0  # 懲罰項：每個時間段僅訪問一次
+
+    num_cities = len(route_matrix)
+    visit_count = [0] * num_cities
+
+    for i in range(len(route_matrix)):
+        for j in range(len(route_matrix[i])):
+            if route_matrix[i][j] == 1:
+                visit_count[j] += 1
+
+    h1 = sum((count - 1) ** 2 for count in visit_count)
+
+    for i in range(len(route_matrix)):
+        h2 += (sum(route_matrix[i]) - 1) ** 2
+
+    # 計算實際的路徑時間成本
+    for i in range(len(route_matrix) - 1):
+        for j in range(len(route_matrix[i])):
+            if route_matrix[i][j] == 1:
+                for k in range(len(route_matrix[i + 1])):
+                    if route_matrix[i + 1][k] == 1:
+                        total_cost += time_matrices[current_time.hour - 9][j][k]
+
+    return total_cost, current_time, h1, h2
+
+def extract_route(route_matrix, start):
+    route = []
+    for row in route_matrix:
+        for col in range(len(row)):
+            if row[col] == 1:
+                route.append(col)
+                break
+    route.append(start)  # 回到起點
+    return route
 
 def display_progress(num_threads):
     global progress
@@ -237,16 +224,11 @@ if __name__ == "__main__":
 
     gm_data_cache = preload_data(s)
 
-    print("Time Matrices:")
-    for hour, matrix in zip(range(9, 9 + len(time_matrices)), time_matrices):
-        print(f"Hour {hour}:")
-        print(matrix)
-
     for thread_id in range(num_threads):
         progress[thread_id] = "Initializing"
 
     for thread_id in range(num_threads):
-        thread = threading.Thread(target=sa, args=(s, start, outputs, thread_id, time_matrices, num_threads, gm_data_cache))
+        thread = threading.Thread(target=sqa, args=(s, start, outputs, thread_id, time_matrices, num_threads, gm_data_cache))
         threads.append(thread)
         thread.start()
 
